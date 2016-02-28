@@ -1,0 +1,7 @@
+[package]
+name = "nesrs"
+version = "0.1.0"
+authors = ["Dustin Holmes"]
+
+[dependencies]
+byteorder = "0.4.2"
