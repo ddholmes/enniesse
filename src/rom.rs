@@ -1,4 +1,3 @@
-use std::str;
 use std::fmt;
 use std::io::Read;
 
@@ -37,6 +36,7 @@ impl From<Box<[u8]>> for Rom {
         let chr_rom_bytes: usize = chr_rom_size as usize * 8192;
         
         let prg_rom_end = 16 + prg_rom_bytes;
+        let chr_rom_end = prg_rom_end + chr_rom_bytes;
         
         // TODO: error handling
         let mut prg_rom = Vec::<u8>::new();
@@ -44,7 +44,7 @@ impl From<Box<[u8]>> for Rom {
         rom_data.read_to_end(&mut prg_rom).unwrap();
         
         let mut chr_rom = Vec::<u8>::new();
-        let mut rom_data = &value[prg_rom_end..];
+        let mut rom_data = &value[prg_rom_end..chr_rom_end];
         rom_data.read_to_end(&mut chr_rom).unwrap();
         
         Rom {

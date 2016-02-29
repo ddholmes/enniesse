@@ -3,7 +3,10 @@ use std::fs;
 use std::io::Read;
 use std::path::Path;
 
-extern crate byteorder;
+#[macro_use]
+extern crate enum_primitive;
+
+extern crate num;
 
 mod cpu;
 mod nes;
@@ -23,8 +26,6 @@ fn main() {
     
     let mut nes = nes::Nes::new(Box::new(rom));
     nes.power_on();
-    
-    println!("{:#?}", nes);
 }
 
 fn read_file<P: AsRef<Path>>(path: P) -> Box<[u8]> {

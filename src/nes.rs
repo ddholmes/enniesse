@@ -17,5 +17,9 @@ impl Nes {
     
     pub fn power_on(&mut self) {
         self.cpu.reset();
+        
+        loop {
+            self.cpu.run_instruction();
+        }
     }
 }

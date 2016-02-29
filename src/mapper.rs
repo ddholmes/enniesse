@@ -48,16 +48,15 @@ impl Mapper for Nrom {
         } else if self.rom.prg_rom.len() > 16384 {
             // max size is 32k
             self.rom.prg_rom[addr as usize & 0x7fff]
-
         } else {
             // 16k
             self.rom.prg_rom[addr as usize & 0x3fff]
         }
     }
-    fn store_byte_prg(&mut self, addr: u16, val: u8) {}
+    fn store_byte_prg(&mut self, _: u16, _: u8) {}
     
     fn load_byte_chr(&mut self, addr: u16) -> u8 {
-        0
+        self.rom.chr_rom[addr as usize]
     }
-    fn store_byte_chr(&mut self, addr: u16, val: u8) {}
+    fn store_byte_chr(&mut self, _: u16, _: u8) {}
 }
