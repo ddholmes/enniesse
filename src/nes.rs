@@ -1,14 +1,14 @@
-use super::cpu;
-use super::rom;
+use super::cpu::Cpu;
+use super::rom::Rom;
 
 #[derive(Debug)]
 pub struct Nes {
-    cpu: cpu::Cpu
+    cpu: Cpu
 }
 
 impl Nes {
-    pub fn new(rom: rom::Rom) -> Nes {
-        let cpu = cpu::Cpu::new(rom);
+    pub fn new(rom: Box<Rom>) -> Nes {
+        let cpu = Cpu::new(rom);
         
         Nes {
             cpu: cpu

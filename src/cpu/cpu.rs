@@ -1,5 +1,9 @@
-use super::super::memory;
-use super::super::rom;
+use super::super::memory::MemoryMap;
+use super::super::rom::Rom;
+
+const NMI_VECTOR: u16 = 0xfffa;
+const RESET_VECTOR: u16 = 0xfffc;
+const BRK_VECTOR: u16 = 0xfffe;
 
 #[derive(Debug)]
 pub struct Cpu {
@@ -16,26 +20,26 @@ pub struct Cpu {
     // status register
     reg_p: StatusRegister,
     
-    memory: memory::Memory
+    memory_map: MemoryMap
 }
 
 impl Cpu {
-    pub fn new(rom: rom::Rom) -> Cpu {
+    pub fn new(rom: Box<Rom>) -> Cpu {
         Cpu {
             reg_a: 0,
             reg_x: 0,
             reg_y: 0,
-            reg_pc: 0,
+            reg_pc: 0xc000,
             reg_sp: 0xfd,
-            reg_p: StatusRegister::from(0x34),
-            memory: memory::Memory::new(rom)
+            reg_p: StatusRegister::from(0x24),
+            memory_map: MemoryMap::new(rom)
         }
     }
     
     pub fn reset(&mut self) {
-        self.reg_sp -= 3;
-        self.reg_p.interrupt_disable = true;
-        self.reg_pc = 0;
+        //self.reg_sp -= 3;
+        //self.reg_p.interrupt_disable = true;
+        self.reg_pc = self.memory_map.load_word(RESET_VECTOR);
     }
 }
 

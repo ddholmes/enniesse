@@ -9,6 +9,7 @@ mod cpu;
 mod nes;
 mod rom;
 mod memory;
+mod mapper;
 
 fn main() {
     let args = env::args().collect::<Vec<String>>();
@@ -20,7 +21,7 @@ fn main() {
     
     //println!("{}", rom.mapper);
     
-    let mut nes = nes::Nes::new(rom);
+    let mut nes = nes::Nes::new(Box::new(rom));
     nes.power_on();
     
     println!("{:#?}", nes);
