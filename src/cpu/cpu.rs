@@ -9,6 +9,8 @@ const NMI_VECTOR: u16 = 0xfffa;
 const RESET_VECTOR: u16 = 0xfffc;
 const BRK_VECTOR: u16 = 0xfffe;
 
+const STACK_START: u16 = 0x0100;
+
 pub struct Cpu {
     // accumulator
     reg_a: u8,
@@ -64,14 +66,118 @@ impl Cpu {
             },
             Opcode::Ldx => {
                 let val = self.load_byte_from_pc();
-                self.reg_p.negative = (val & 0b1000_000) != 0;
-                self.reg_p.zero = (val == 0);
+                self.set_zero_negative_flags(val);
                 self.reg_x = val;
             },
             Opcode::Stx => {
-                let target = self.load_byte_from_pc();
-                // TODO: actually store
-                //self.memory_map.store_byte(self.reg_x);
+                let reg = self.reg_x;
+                self.store_reg(reg);
+            },
+            Opcode::Jsr => {
+                let addr = self.load_word_from_pc();
+                let pc = self.reg_pc;
+                self.stack_push_word(pc - 1);
+                self.reg_pc = addr;
+            },
+            Opcode::Nop => {},
+            Opcode::Sec => {
+                self.reg_p.carry = true;
+            },
+            Opcode::Bcs => {
+                let condition = self.reg_p.carry;
+                self.branch(condition);
+            },
+            Opcode::Clc => {
+                self.reg_p.carry = false;
+            },
+            Opcode::Bcc => {
+                let condition = !self.reg_p.carry;
+                self.branch(condition);
+            },
+            Opcode::Lda => {
+                let val = self.load_byte_from_pc();
+                self.set_zero_negative_flags(val);
+                self.reg_a = val;
+            },
+            Opcode::Beq => {
+                let condition = self.reg_p.zero;
+                self.branch(condition);
+            },
+            Opcode::Bne => {
+                let condition = !self.reg_p.zero;
+                self.branch(condition);
+            },
+            Opcode::Sta => {
+                let reg = self.reg_a;
+                self.store_reg(reg);
+            },
+            Opcode::Bit => {
+                let addr = self.load_byte_from_pc() as u16;
+                let val = self.memory_map.load_byte(addr);
+                let a = self.reg_a;
+                
+                self.reg_p.zero = (val & a) == 0;
+                self.reg_p.negative = (val & 0b1000_0000) != 0;
+                self.reg_p.overflow = (val & 0b0100_0000) != 0;
+            },
+            Opcode::Bvs => {
+                let condition = self.reg_p.overflow;
+                self.branch(condition);
+            },
+            Opcode::Bvc => {
+                let condition = !self.reg_p.overflow;
+                self.branch(condition);
+            },
+            Opcode::Bpl => {
+                let condition = !self.reg_p.negative;
+                self.branch(condition);
+            },
+            Opcode::Rts => {
+                let addr = self.stack_pop_word();
+                
+                self.reg_pc = addr + 1;
+            },
+            Opcode::Sei => {
+                self.reg_p.interrupt_disable = true;
+            },
+            Opcode::Sed => {
+                self.reg_p.decimal_mode = true;
+            },
+            Opcode::Php => {
+                let status = self.reg_p.as_u8();
+                // sets the break flag
+                self.stack_push_byte(status | (1 << 4));
+            },
+            Opcode::Pla => {
+                let val = self.stack_pop_byte();
+                self.set_zero_negative_flags(val);
+                self.reg_a = val;
+            },
+            Opcode::And => {
+                let val = self.load_byte_from_pc();
+                
+                let result = val & self.reg_a;
+                self.set_zero_negative_flags(result);
+                self.reg_a = result;
+            },
+            Opcode::Cmp => {
+                let val = self.load_byte_from_pc();
+                
+                let result = self.reg_a as u32 - val as u32;
+                
+                self.reg_p.carry = self.reg_a >= val;
+                self.set_zero_negative_flags(result as u8);
+            },
+            Opcode::Cld => {
+                self.reg_p.decimal_mode = false;
+            },
+            Opcode::Pha => {
+                let a = self.reg_a;
+                self.stack_push_byte(a);
+            },
+            Opcode::Plp => {
+                let val = self.stack_pop_byte();
+                self.set_flags(val);
             }
         }
     }
@@ -88,6 +194,58 @@ impl Cpu {
         self.reg_pc += 2;
         
         value
+    }
+    
+    fn stack_push_byte(&mut self, val: u8) {
+        self.memory_map.store_byte(STACK_START + self.reg_sp as u16, val);
+        self.reg_sp -= 1;
+    }
+    
+    fn stack_push_word(&mut self, val: u16) {
+        self.memory_map.store_word(STACK_START + (self.reg_sp - 1) as u16, val);
+        self.reg_sp -= 2;
+    }
+    
+    fn stack_pop_byte(&mut self) -> u8 {
+        let val = self.memory_map.load_byte(STACK_START + (self.reg_sp + 1) as u16);
+        self.reg_sp += 1;
+        val
+    }
+    
+    fn stack_pop_word(&mut self) -> u16 {
+        let val = self.memory_map.load_word(STACK_START + (self.reg_sp + 1) as u16);
+        self.reg_sp += 2;
+        val
+    }
+    
+    fn branch(&mut self, condition: bool) {
+        let displacement = self.load_byte_from_pc();
+        
+        if condition {
+            self.reg_pc += displacement as u16;
+        }
+    }
+    
+    fn set_zero_negative_flags(&mut self, val: u8) {
+        self.reg_p.negative = (val & 0b1000_0000) != 0;
+        self.reg_p.zero = val == 0;
+    }
+    
+    fn store_reg(&mut self, reg: u8) {
+        let target = self.load_byte_from_pc();
+        self.memory_map.store_byte(target as u16, reg);
+    }
+    
+    fn set_flags(&mut self, flags: u8) {
+        let new_flags = StatusRegister::from(flags);
+        
+        self.reg_p.carry = new_flags.carry;
+        self.reg_p.zero = new_flags.zero;
+        self.reg_p.interrupt_disable = new_flags.interrupt_disable;
+        self.reg_p.decimal_mode = new_flags.decimal_mode;
+        // ignores bit 4 and 5
+        self.reg_p.overflow = new_flags.overflow;
+        self.reg_p.negative = new_flags.negative;
     }
     
     fn print_state(&mut self) {
