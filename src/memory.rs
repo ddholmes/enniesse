@@ -1,8 +1,6 @@
 use super::rom::Rom;
 use super::mapper;
 
-use std::fmt;
-
 const RAM_START: u16 = 0x0000;
 const RAM_END: u16 = 0x1fff;
 // the 2k is mirrored between 4 2k blocks

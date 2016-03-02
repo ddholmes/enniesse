@@ -13,21 +13,21 @@ const STACK_START: u16 = 0x0100;
 
 pub struct Cpu {
     // accumulator
-    reg_a: u8,
+    pub reg_a: u8,
     // index X
-    reg_x: u8,
+    pub reg_x: u8,
     // index Y
-    reg_y: u8,
+    pub reg_y: u8,
     // program counter
-    reg_pc: u16,
+    pub reg_pc: u16,
     // stack pointer
-    reg_sp: u8,
+    pub reg_sp: u8,
     // status register
-    reg_p: StatusRegister,
+    pub reg_p: StatusRegister,
     
     memory_map: MemoryMap,
     
-    current_instruction: u8
+    current_instruction: u8,
 }
 
 impl Cpu {
@@ -52,8 +52,6 @@ impl Cpu {
     }
     
     pub fn run_instruction(&mut self) {
-        self.print_state();
-        
         let opcode = Self::get_opcode(self.load_byte_from_pc());
         
         self.execute_instruction(opcode);
@@ -161,12 +159,8 @@ impl Cpu {
                 self.reg_a = result;
             },
             Opcode::Cmp => {
-                let val = self.load_byte_from_pc();
-                
-                let result = self.reg_a as u32 - val as u32;
-                
-                self.reg_p.carry = self.reg_a >= val;
-                self.set_zero_negative_flags(result as u8);
+                let reg = self.reg_a;
+                self.compare(reg);
             },
             Opcode::Cld => {
                 self.reg_p.decimal_mode = false;
@@ -178,6 +172,113 @@ impl Cpu {
             Opcode::Plp => {
                 let val = self.stack_pop_byte();
                 self.set_flags(val);
+            },
+            Opcode::Bmi => {
+                let condition = self.reg_p.negative;
+                self.branch(condition);
+            },
+            Opcode::Ora => {
+                let val = self.load_byte_from_pc();
+                
+                let result = val | self.reg_a;
+                self.set_zero_negative_flags(result);
+                self.reg_a = result;
+            },
+            Opcode::Clv => {
+                self.reg_p.overflow = false;
+            },
+            Opcode::Eor => {
+                let val = self.load_byte_from_pc();
+                
+                let result = val ^ self.reg_a;
+                self.set_zero_negative_flags(result);
+                self.reg_a = result;
+            },
+            Opcode::Adc => {
+                let val = self.load_byte_from_pc();
+                
+                let mut result = self.reg_a as u32 + val as u32;
+                if self.reg_p.carry {
+                    result += 1;
+                }
+                
+                self.reg_p.carry = (result & 0x0100) != 0;
+                let result = result as u8;
+                self.reg_p.overflow = (self.reg_a ^ val) & 0b1000_0000 == 0 && (self.reg_a ^ result) & 0b1000_0000 == 0b1000_0000;
+                self.set_zero_negative_flags(result);
+                self.reg_a = result;
+            },
+            Opcode::Ldy => {
+                let val = self.load_byte_from_pc();
+                self.set_zero_negative_flags(val);
+                self.reg_y = val;
+            },
+            Opcode::Cpy => {
+                let reg = self.reg_y;
+                self.compare(reg);
+            },
+            Opcode::Cpx => {
+                let reg = self.reg_x;
+                self.compare(reg);
+            },
+            Opcode::Sbc => {
+                let val = self.load_byte_from_pc();
+                
+                let mut result = self.reg_a as i16 - val as i16;
+                if !self.reg_p.carry {
+                    result -= 1;
+                }
+                
+                self.reg_p.carry = (result & 0x0100) == 0;
+                let result = result as u8;
+                self.reg_p.overflow = (self.reg_a ^ result) & 0b1000_0000 != 0 && (self.reg_a ^ val) & 0b1000_0000 == 0b1000_0000;
+                self.set_zero_negative_flags(result);
+                self.reg_a = result;
+            },
+            Opcode::Iny => {
+                let result = self.reg_y.wrapping_add(1);
+                self.set_zero_negative_flags(result);
+                self.reg_y = result;
+            },
+            Opcode::Inx => {
+                let result = self.reg_x.wrapping_add(1);
+                self.set_zero_negative_flags(result);
+                self.reg_x = result;
+            },
+            Opcode::Dey => {
+                let result = self.reg_y.wrapping_sub(1);
+                self.set_zero_negative_flags(result);
+                self.reg_y = result;
+            }
+            Opcode::Dex => {
+                let result = self.reg_x.wrapping_sub(1);
+                self.set_zero_negative_flags(result);
+                self.reg_x = result;
+            },
+            Opcode::Tay => {
+                let result = self.reg_a;
+                self.set_zero_negative_flags(result);
+                self.reg_y = result;
+            },
+            Opcode::Tax => {
+                let result = self.reg_a;
+                self.set_zero_negative_flags(result);
+                self.reg_x = result;
+            },
+            Opcode::Tya => {
+                let result = self.reg_y;
+                self.set_zero_negative_flags(result);
+                self.reg_a = result;
+            },
+            Opcode::Txa => {
+                let result = self.reg_x;
+                self.set_zero_negative_flags(result);
+                self.reg_a = result;
+            },
+            Opcode::Tsx => {
+                let result = self.reg_sp;
+                self.set_zero_negative_flags(result);
+                self.reg_x = result;
             }
         }
     }
@@ -248,7 +349,16 @@ impl Cpu {
         self.reg_p.negative = new_flags.negative;
     }
     
-    fn print_state(&mut self) {
+    fn compare(&mut self, reg: u8) {
+        let val = self.load_byte_from_pc();
+        
+        let result = reg as i16 - val as i16;
+        
+        self.reg_p.carry = reg >= val;
+        self.set_zero_negative_flags(result as u8);    
+    }
+    
+    pub fn trace_state(&mut self) {
         self.current_instruction = self.memory_map.load_byte(self.reg_pc);
         println!("{:?}", self);
     }
@@ -272,7 +382,7 @@ impl fmt::Debug for Cpu {
 }
 
 #[derive(Debug)]
-struct StatusRegister {
+pub struct StatusRegister {
     carry: bool,
     zero: bool,
     interrupt_disable: bool,
@@ -284,7 +394,7 @@ struct StatusRegister {
 }
 
 impl StatusRegister {
-    fn as_u8(&self) -> u8 {
+    pub fn as_u8(&self) -> u8 {
         (self.negative as u8)            << 7 |
         (self.overflow as u8)            << 6 |
         (self.bit5 as u8)                << 5 |

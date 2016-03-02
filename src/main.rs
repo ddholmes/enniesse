@@ -7,6 +7,7 @@ use std::path::Path;
 extern crate enum_primitive;
 
 extern crate num;
+extern crate regex;
 
 mod cpu;
 mod nes;
@@ -22,8 +23,6 @@ fn main() {
     
     let rom = rom::Rom::from(rom_buf);
     
-    //println!("{}", rom.mapper);
-    
     let mut nes = nes::Nes::new(Box::new(rom));
     nes.power_on();
 }
@@ -31,7 +30,7 @@ fn main() {
 fn read_file<P: AsRef<Path>>(path: P) -> Box<[u8]> {
     let mut rom_file = fs::File::open(path).unwrap();
     let mut rom_buf = Vec::<u8>::new();
-    rom_file.read_to_end(&mut rom_buf);
+    let _ = rom_file.read_to_end(&mut rom_buf);
     
     rom_buf.into_boxed_slice()
 }

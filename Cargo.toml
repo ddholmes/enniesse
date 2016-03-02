@@ -6,3 +6,4 @@ authors = ["Dustin Holmes"]
 [dependencies]
 enum_primitive = "0.1.0"
 num = "0.1.30"
+regex = "0.1.55"
