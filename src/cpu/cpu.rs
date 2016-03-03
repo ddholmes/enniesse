@@ -1,6 +1,8 @@
 use super::super::memory::MemoryMap;
 use super::super::rom::Rom;
 use super::opcode::Opcode;
+use super::instruction::Instruction;
+use super::instruction::AddressingMode;
 
 use std::fmt;
 use num::FromPrimitive;
@@ -25,7 +27,7 @@ pub struct Cpu {
     // status register
     pub reg_p: StatusRegister,
     
-    memory_map: MemoryMap,
+    pub memory_map: MemoryMap,
     
     current_instruction: u8,
 }
@@ -52,13 +54,15 @@ impl Cpu {
     }
     
     pub fn run_instruction(&mut self) {
-        let opcode = Self::get_opcode(self.load_byte_from_pc());
+        //let opcode = Self::get_opcode(self.load_byte_from_pc());
         
-        self.execute_instruction(opcode);
+        let instruction = self.load_instruction();
+        
+        self.execute_instruction(instruction);
     }
     
-    fn execute_instruction(&mut self, opcode: Opcode) {
-        match opcode {
+    fn execute_instruction(&mut self, instruction: Instruction) {
+        match instruction.opcode {
             Opcode::Jmp => {
                 self.reg_pc = self.load_word_from_pc();
             },
@@ -283,14 +287,14 @@ impl Cpu {
         }
     }
     
-    fn load_byte_from_pc(&mut self) -> u8 {
+    pub fn load_byte_from_pc(&mut self) -> u8 {
         let value = self.memory_map.load_byte(self.reg_pc);
         self.reg_pc += 1;
         
         value
     }
     
-    fn load_word_from_pc(&mut self) -> u16 {
+    pub fn load_word_from_pc(&mut self) -> u16 {
         let value = self.memory_map.load_word(self.reg_pc);
         self.reg_pc += 2;
         
@@ -363,16 +367,18 @@ impl Cpu {
         println!("{:?}", self);
     }
     
-    fn get_opcode(opcode: u8) -> Opcode {
-        Opcode::from_u8(opcode).unwrap_or_else(|| panic!("Unknown opcode: {:X}", opcode))
+    fn load_instruction(&mut self) -> Instruction {
+        let opcode = self.load_byte_from_pc();
+        
+        Instruction::decode(opcode)
     }
 }
 
 impl fmt::Debug for Cpu {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:04X} {:?} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:",
+        write!(f, "{:04X} {:20X} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:",
             self.reg_pc,
-            Cpu::get_opcode(self.current_instruction),
+            self.current_instruction,
             self.reg_a,
             self.reg_x,
             self.reg_y,

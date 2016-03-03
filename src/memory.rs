@@ -38,6 +38,10 @@ impl MemoryMap {
         region.load_byte(addr)
     }
     
+    pub fn load_word_zero_page(&mut self, addr: u8) -> u16 {
+        self.load_byte(addr as u16) as u16 | (self.load_byte((addr + 1) as u16) as u16) << 8
+    }
+    
     pub fn store_byte(&mut self, addr: u16, val: u8) {
         let mut region = self.get_region(addr);
         region.store_byte(addr, val);
