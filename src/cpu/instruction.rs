@@ -27,8 +27,10 @@ impl Instruction {
             0x29 => Instruction::new(And, Some(Box::new(ImmediateAddressingMode))),
             0x30 => Instruction::new(Bmi, Some(Box::new(ImmediateAddressingMode))),
             0x38 => Instruction::new(Sec, None),
+            0x40 => Instruction::new(Rti, None),
             0x48 => Instruction::new(Pha, None),
             0x49 => Instruction::new(Eor, Some(Box::new(ImmediateAddressingMode))),
+            0x4a => Instruction::new(Lsr, Some(Box::new(AccumulatorAddressingMode))),
             0x4c => Instruction::new(Jmp, Some(Box::new(AbsoluteAddressingMode))),
             0x50 => Instruction::new(Bvc, Some(Box::new(ImmediateAddressingMode))),
             0x60 => Instruction::new(Rts, None),
@@ -40,12 +42,16 @@ impl Instruction {
             0x86 => Instruction::new(Stx, Some(Box::new(ZeroPageAddressingMode))),
             0x88 => Instruction::new(Dey, None),
             0x8a => Instruction::new(Txa, None),
+            0x8e => Instruction::new(Stx, Some(Box::new(AbsoluteAddressingMode))),
             0x90 => Instruction::new(Bcc, Some(Box::new(ImmediateAddressingMode))),
             0x98 => Instruction::new(Tya, None),
+            0x9a => Instruction::new(Txs, None),
             0xa0 => Instruction::new(Ldy, Some(Box::new(ImmediateAddressingMode))),
             0xa2 => Instruction::new(Ldx, Some(Box::new(ImmediateAddressingMode))),
             0xa8 => Instruction::new(Tay, None),
             0xa9 => Instruction::new(Lda, Some(Box::new(ImmediateAddressingMode))),
+            0xad => Instruction::new(Lda, Some(Box::new(AbsoluteAddressingMode))),
+            0xae => Instruction::new(Ldx, Some(Box::new(AbsoluteAddressingMode))),
             0xaa => Instruction::new(Tax, None),
             0xb0 => Instruction::new(Bcs, Some(Box::new(ImmediateAddressingMode))),
             0xb8 => Instruction::new(Clv, None),
@@ -62,7 +68,7 @@ impl Instruction {
             0xea => Instruction::new(Nop, None),
             0xf0 => Instruction::new(Beq, Some(Box::new(ImmediateAddressingMode))),
             0xf8 => Instruction::new(Sed, None),
-            _ => panic!("Unknown opcode: {:X}", opcode)
+            _ => panic!("Unknown opcode: {:02X}", opcode)
         }
     }
 }

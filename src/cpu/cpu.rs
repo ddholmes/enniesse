@@ -54,8 +54,6 @@ impl Cpu {
     }
     
     pub fn run_instruction(&mut self) {
-        //let opcode = Self::get_opcode(self.load_byte_from_pc());
-        
         let instruction = self.load_instruction();
         
         self.execute_instruction(instruction);
@@ -67,13 +65,14 @@ impl Cpu {
                 self.reg_pc = self.load_word_from_pc();
             },
             Opcode::Ldx => {
-                let val = self.load_byte_from_pc();
+                let val = instruction.addressing_mode.unwrap().load(self);
                 self.set_zero_negative_flags(val);
                 self.reg_x = val;
             },
             Opcode::Stx => {
                 let reg = self.reg_x;
-                self.store_reg(reg);
+                
+                instruction.addressing_mode.unwrap().store(self, reg);
             },
             Opcode::Jsr => {
                 let addr = self.load_word_from_pc();
@@ -97,7 +96,7 @@ impl Cpu {
                 self.branch(condition);
             },
             Opcode::Lda => {
-                let val = self.load_byte_from_pc();
+                let val = instruction.addressing_mode.unwrap().load(self);
                 self.set_zero_negative_flags(val);
                 self.reg_a = val;
             },
@@ -111,7 +110,8 @@ impl Cpu {
             },
             Opcode::Sta => {
                 let reg = self.reg_a;
-                self.store_reg(reg);
+                
+                instruction.addressing_mode.unwrap().store(self, reg);
             },
             Opcode::Bit => {
                 let addr = self.load_byte_from_pc() as u16;
@@ -283,6 +283,24 @@ impl Cpu {
                 let result = self.reg_sp;
                 self.set_zero_negative_flags(result);
                 self.reg_x = result;
+            },
+            Opcode::Txs => {
+                let result = self.reg_x;
+                self.reg_sp = result;
+            },
+            Opcode::Rti => {
+                let flags = self.stack_pop_byte();
+                self.set_flags(flags);
+                self.reg_pc = self.stack_pop_word();
+            },
+            Opcode::Lsr => {
+                let mode = instruction.addressing_mode.unwrap();
+                let val = mode.load(self);
+                
+                self.reg_p.carry = (val & 1) != 0;
+                let result = val >> 1;
+                self.set_zero_negative_flags(result);
+                mode.store(self, result);
             }
         }
     }
@@ -336,11 +354,6 @@ impl Cpu {
         self.reg_p.zero = val == 0;
     }
     
-    fn store_reg(&mut self, reg: u8) {
-        let target = self.load_byte_from_pc();
-        self.memory_map.store_byte(target as u16, reg);
-    }
-    
     fn set_flags(&mut self, flags: u8) {
         let new_flags = StatusRegister::from(flags);
         
@@ -376,7 +389,7 @@ impl Cpu {
 
 impl fmt::Debug for Cpu {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:04X} {:20X} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:",
+        write!(f, "{:04X} {:02X} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:",
             self.reg_pc,
             self.current_instruction,
             self.reg_a,

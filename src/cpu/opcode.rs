@@ -45,6 +45,9 @@ enum_from_primitive! {
         Sbc = 0xe9,
         Nop = 0xea,
         Beq = 0xf0,
-        Sed = 0xf8
+        Sed = 0xf8,
+        Txs,
+        Rti,
+        Lsr
     }
 }
