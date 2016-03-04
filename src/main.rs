@@ -16,9 +16,8 @@ mod memory;
 mod mapper;
 
 fn main() {
-    let args = env::args().collect::<Vec<String>>();
-    
-    let rom_file_name = &args[1];
+    let mut args = env::args();
+    let rom_file_name = args.nth(1).unwrap();
     let rom_buf = read_file(rom_file_name);
     
     let rom = rom::Rom::from(rom_buf);

@@ -1,4 +1,3 @@
-use std::fmt;
 use std::io::Read;
 
 const FILE_HEADER: [u8; 4] = *b"NES\x1a";
@@ -54,11 +53,5 @@ impl From<Box<[u8]>> for Rom {
             prg_rom: prg_rom.into_boxed_slice(),
             chr_rom: chr_rom.into_boxed_slice()
         }
-    }
-}
-
-impl fmt::Debug for Rom {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Debug not implemented for Rom")
     }
 }

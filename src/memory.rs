@@ -39,7 +39,7 @@ impl MemoryMap {
     }
     
     pub fn load_word_zero_page(&mut self, addr: u8) -> u16 {
-        self.load_byte(addr as u16) as u16 | (self.load_byte((addr + 1) as u16) as u16) << 8
+        self.load_byte(addr as u16) as u16 | (self.load_byte(addr.wrapping_add(1) as u16) as u16) << 8
     }
     
     pub fn store_byte(&mut self, addr: u16, val: u8) {

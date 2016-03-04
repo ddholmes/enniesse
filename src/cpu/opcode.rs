@@ -48,6 +48,10 @@ enum_from_primitive! {
         Sed = 0xf8,
         Txs,
         Rti,
-        Lsr
+        Lsr,
+        Asl,
+        Ror,
+        Rol,
+        Sty
     }
 }

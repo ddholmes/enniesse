@@ -114,8 +114,7 @@ impl Cpu {
                 instruction.addressing_mode.unwrap().store(self, reg);
             },
             Opcode::Bit => {
-                let addr = self.load_byte_from_pc() as u16;
-                let val = self.memory_map.load_byte(addr);
+                let val = instruction.addressing_mode.unwrap().load(self);
                 let a = self.reg_a;
                 
                 self.reg_p.zero = (val & a) == 0;
@@ -156,7 +155,7 @@ impl Cpu {
                 self.reg_a = val;
             },
             Opcode::And => {
-                let val = self.load_byte_from_pc();
+                let val = instruction.addressing_mode.unwrap().load(self);
                 
                 let result = val & self.reg_a;
                 self.set_zero_negative_flags(result);
@@ -164,7 +163,7 @@ impl Cpu {
             },
             Opcode::Cmp => {
                 let reg = self.reg_a;
-                self.compare(reg);
+                self.compare(reg, instruction.addressing_mode.unwrap());
             },
             Opcode::Cld => {
                 self.reg_p.decimal_mode = false;
@@ -182,7 +181,7 @@ impl Cpu {
                 self.branch(condition);
             },
             Opcode::Ora => {
-                let val = self.load_byte_from_pc();
+                let val = instruction.addressing_mode.unwrap().load(self);
                 
                 let result = val | self.reg_a;
                 self.set_zero_negative_flags(result);
@@ -192,14 +191,14 @@ impl Cpu {
                 self.reg_p.overflow = false;
             },
             Opcode::Eor => {
-                let val = self.load_byte_from_pc();
+                let val = instruction.addressing_mode.unwrap().load(self);
                 
                 let result = val ^ self.reg_a;
                 self.set_zero_negative_flags(result);
                 self.reg_a = result;
             },
             Opcode::Adc => {
-                let val = self.load_byte_from_pc();
+                let val = instruction.addressing_mode.unwrap().load(self);
                 
                 let mut result = self.reg_a as u32 + val as u32;
                 if self.reg_p.carry {
@@ -213,20 +212,20 @@ impl Cpu {
                 self.reg_a = result;
             },
             Opcode::Ldy => {
-                let val = self.load_byte_from_pc();
+                let val = instruction.addressing_mode.unwrap().load(self);
                 self.set_zero_negative_flags(val);
                 self.reg_y = val;
             },
             Opcode::Cpy => {
                 let reg = self.reg_y;
-                self.compare(reg);
+                self.compare(reg, instruction.addressing_mode.unwrap());
             },
             Opcode::Cpx => {
                 let reg = self.reg_x;
-                self.compare(reg);
+                self.compare(reg, instruction.addressing_mode.unwrap());
             },
             Opcode::Sbc => {
-                let val = self.load_byte_from_pc();
+                let val = instruction.addressing_mode.unwrap().load(self);
                 
                 let mut result = self.reg_a as i16 - val as i16;
                 if !self.reg_p.carry {
@@ -294,13 +293,23 @@ impl Cpu {
                 self.reg_pc = self.stack_pop_word();
             },
             Opcode::Lsr => {
-                let mode = instruction.addressing_mode.unwrap();
-                let val = mode.load(self);
+                self.shift_right(false, instruction.addressing_mode.unwrap());
+            },
+            Opcode::Asl => {
+                self.shift_left(false, instruction.addressing_mode.unwrap());
+            },
+            Opcode::Ror => {
+                let carry = self.reg_p.carry;
+                self.shift_right(carry, instruction.addressing_mode.unwrap());
+            },
+            Opcode::Rol => {
+                let carry = self.reg_p.carry;
+                self.shift_left(carry, instruction.addressing_mode.unwrap());
+            },
+            Opcode::Sty => {
+                let reg = self.reg_y;
                 
-                self.reg_p.carry = (val & 1) != 0;
-                let result = val >> 1;
-                self.set_zero_negative_flags(result);
-                mode.store(self, result);
+                instruction.addressing_mode.unwrap().store(self, reg);
             }
         }
     }
@@ -366,13 +375,37 @@ impl Cpu {
         self.reg_p.negative = new_flags.negative;
     }
     
-    fn compare(&mut self, reg: u8) {
-        let val = self.load_byte_from_pc();
+    fn compare(&mut self, reg: u8, mode: Box<AddressingMode>) {
+        let val = mode.load(self);
         
         let result = reg as i16 - val as i16;
         
         self.reg_p.carry = reg >= val;
         self.set_zero_negative_flags(result as u8);    
+    }
+    
+    fn shift_left(&mut self, set_lsb: bool, mode: Box<AddressingMode>) {
+        let val = mode.load(self);
+        self.reg_p.carry = (val & 0b1000_0000) != 0;
+        let mut result = val << 1;
+        if set_lsb {
+            result = result | 1;
+        }
+        
+        self.set_zero_negative_flags(result);
+        mode.store(self, result);
+    }
+    
+    fn shift_right(&mut self, set_msb: bool, mode: Box<AddressingMode>) {
+        let val = mode.load(self);
+        self.reg_p.carry = (val & 1) != 0;
+        let mut result = val >> 1;
+        if set_msb {
+            result = result | 0b1000_0000;
+        }
+        
+        self.set_zero_negative_flags(result);
+        mode.store(self, result);
     }
     
     pub fn trace_state(&mut self) {
