@@ -43,11 +43,11 @@ impl MemoryAddressingMode {
     }
     
     pub fn zero_page_x(cpu: &mut Cpu) -> MemoryAddressingMode {
-        MemoryAddressingMode { address: (cpu.load_byte_from_pc() + cpu.reg_x) as u16 }
+        MemoryAddressingMode { address: cpu.load_byte_from_pc().wrapping_add(cpu.reg_x) as u16 }
     }
     
     pub fn zero_page_y(cpu: &mut Cpu) -> MemoryAddressingMode {
-        MemoryAddressingMode { address: (cpu.load_byte_from_pc() + cpu.reg_y) as u16 }
+        MemoryAddressingMode { address: cpu.load_byte_from_pc().wrapping_add(cpu.reg_y) as u16 }
     }
     
     pub fn absolute(cpu: &mut Cpu) -> MemoryAddressingMode {
@@ -59,7 +59,7 @@ impl MemoryAddressingMode {
     }
     
     pub fn absolute_y(cpu: &mut Cpu) -> MemoryAddressingMode {
-        MemoryAddressingMode { address: cpu.load_word_from_pc() + cpu.reg_y as u16 }
+        MemoryAddressingMode { address: cpu.load_word_from_pc().wrapping_add(cpu.reg_y as u16) as u16 }
     }
     
     pub fn indirect_x(cpu: &mut Cpu) -> MemoryAddressingMode {
@@ -73,6 +73,6 @@ impl MemoryAddressingMode {
         let val = cpu.load_byte_from_pc();
         let y = cpu.reg_y as u16;
         
-        MemoryAddressingMode { address: cpu.memory_map.load_word_zero_page(val) + y }
+        MemoryAddressingMode { address: cpu.memory_map.load_word_zero_page(val).wrapping_add(y) }
     }
 }
