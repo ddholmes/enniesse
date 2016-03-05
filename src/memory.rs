@@ -1,5 +1,6 @@
 use super::rom::Rom;
 use super::mapper;
+use super::apu::Apu;
 
 const RAM_START: u16 = 0x0000;
 const RAM_END: u16 = 0x1fff;
@@ -9,70 +10,69 @@ const RAM_SIZE: u16 = 2048;
 const PPU_REG_START: u16 = 0x2000;
 const PPU_REG_END: u16 = 0x3fff;
 
-const APU_IO_REG_START: u16 = 0x4000;
-const APU_IO_REG_END: u16 = 0x401f;
+const APU_REG_START: u16 = 0x4000;
+const APU_REG_END: u16 = 0x4015;
+const IO_REG: u16 = 0x4016;
+const APU_IO_SHARED_REG: u16 = 0x4017;
 
 const CART_MAPPER_START: u16 = 0x4020;
 const CART_MAPPER_END: u16 = 0xffff;
 
-pub struct MemoryMap {
-    pub ram: Box<MemoryRegion>,
-    pub mapper: Box<MemoryRegion>
-}
-
-impl MemoryMap {
-    pub fn new(rom: Box<Rom>) -> MemoryMap {
-        MemoryMap {
-            ram: Box::new(Ram::new()),
-            mapper: mapper::load_mapper(rom)
-        }
-    }
-    
-    pub fn load_word(&mut self, addr: u16) -> u16 {
-        let mut region = self.get_region(addr);
-        region.load_word(addr)
-    }
-    
-    pub fn load_byte(&mut self, addr: u16) -> u8 {
-        let mut region = self.get_region(addr);
-        region.load_byte(addr)
-    }
-    
-    pub fn load_word_zero_page(&mut self, addr: u8) -> u16 {
-        self.load_byte(addr as u16) as u16 | (self.load_byte(addr.wrapping_add(1) as u16) as u16) << 8
-    }
-    
-    pub fn store_byte(&mut self, addr: u16, val: u8) {
-        let mut region = self.get_region(addr);
-        region.store_byte(addr, val);
-    }
-    
-    pub fn store_word(&mut self, addr: u16, val: u16) {
-        let mut region = self.get_region(addr);
-        region.store_word(addr, val);
-    }
-    
-    fn get_region(&mut self, addr: u16) -> &mut Box<MemoryRegion> {
-        match addr {
-            RAM_START ... RAM_END => &mut self.ram,
-            PPU_REG_START ... PPU_REG_END => panic!("PPU not implemented"),
-            APU_IO_REG_START ... APU_IO_REG_END => panic!("APU and IO not implemented"),
-            CART_MAPPER_START ... CART_MAPPER_END => &mut self.mapper,
-            _ => panic!("Address out of range: {:X}", addr)
-        }
-    }
-}
-
-pub trait MemoryRegion { 
+pub trait Memory { 
     fn load_byte(&mut self, addr: u16) -> u8;
     fn load_word(&mut self, addr: u16) -> u16 {
         self.load_byte(addr) as u16 | (self.load_byte(addr + 1) as u16) << 8
+    }
+    fn load_word_zero_page(&mut self, addr: u8) -> u16 {
+        self.load_byte(addr as u16) as u16 | (self.load_byte(addr.wrapping_add(1) as u16) as u16) << 8
     }
     
     fn store_byte(&mut self, addr: u16, val: u8);
     fn store_word(&mut self, addr: u16, val: u16) {
         self.store_byte(addr, (val & 0xff) as u8);
         self.store_byte(addr + 1, ((val >> 8) & 0xff) as u8);
+    }
+}
+
+pub struct MemoryInterface {
+    pub ram: Ram,
+    pub mapper: Box<mapper::Mapper>,
+    pub apu: Apu
+}
+
+impl MemoryInterface {
+    pub fn new(rom: Box<Rom>) -> MemoryInterface {
+        MemoryInterface {
+            ram: Ram::new(),
+            mapper: mapper::load_mapper(rom),
+            apu: Apu::new()
+        }
+    }
+}
+
+impl Memory for MemoryInterface {
+    fn load_byte(&mut self, addr: u16) -> u8 {
+        match addr {
+            RAM_START ... RAM_END => self.ram.load_byte(addr),
+            PPU_REG_START ... PPU_REG_END => panic!("PPU not implemented"),
+            APU_REG_START ... APU_REG_END => self.apu.load_byte(addr),
+            IO_REG => panic!("IO not implemented"),
+            APU_IO_SHARED_REG => panic!("APU/IO shared not implemented"),
+            CART_MAPPER_START ... CART_MAPPER_END => self.mapper.load_byte_prg(addr),
+            _ => panic!("Address out of range: {:X}", addr)
+        }
+    }
+    
+    fn store_byte(&mut self, addr: u16, val: u8) {
+        match addr {
+            RAM_START ... RAM_END => self.ram.store_byte(addr, val),
+            PPU_REG_START ... PPU_REG_END => panic!("PPU not implemented"),
+            APU_REG_START ... APU_REG_END => self.apu.store_byte(addr, val),
+            IO_REG => panic!("IO not implemented"),
+            APU_IO_SHARED_REG => panic!("APU/IO shared not implemented"),
+            CART_MAPPER_START ... CART_MAPPER_END => self.mapper.store_byte_prg(addr, val),
+            _ => panic!("Address out of range: {:X}", addr)
+        }
     }
 }
 
@@ -88,7 +88,7 @@ impl Ram {
     }
 }
 
-impl MemoryRegion for Ram {
+impl Memory for Ram {
     fn load_byte(&mut self, addr: u16) -> u8 {
         let mut idx = addr;
         if idx >= RAM_SIZE {

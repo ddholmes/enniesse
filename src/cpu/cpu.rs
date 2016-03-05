@@ -1,4 +1,4 @@
-use super::super::memory::MemoryMap;
+use super::super::memory::{Memory, MemoryInterface};
 use super::super::rom::Rom;
 use super::addressing_modes::*;
 
@@ -24,7 +24,7 @@ pub struct Cpu {
     // status register
     pub reg_p: StatusRegister,
     
-    pub memory_map: MemoryMap,
+    pub memory_interface: MemoryInterface,
     
     current_instruction: u8,
 }
@@ -38,7 +38,7 @@ impl Cpu {
             reg_pc: 0xc000,
             reg_sp: 0xfd,
             reg_p: StatusRegister::from(0x24),
-            memory_map: MemoryMap::new(rom),
+            memory_interface: MemoryInterface::new(rom),
             current_instruction: 0
         }
     }
@@ -47,7 +47,7 @@ impl Cpu {
         // TODO: accurately model reset
         
         // TODO: uncomment to start in the appropriate place
-        //self.reg_pc = self.memory_map.load_word(RESET_VECTOR);
+        //self.reg_pc = self.memory_interface.load_word(RESET_VECTOR);
     }
     
     pub fn run_instruction(&mut self) {
@@ -288,37 +288,37 @@ impl Cpu {
     }
     
     pub fn load_byte_from_pc(&mut self) -> u8 {
-        let value = self.memory_map.load_byte(self.reg_pc);
+        let value = self.memory_interface.load_byte(self.reg_pc);
         self.reg_pc += 1;
         
         value
     }
     
     pub fn load_word_from_pc(&mut self) -> u16 {
-        let value = self.memory_map.load_word(self.reg_pc);
+        let value = self.memory_interface.load_word(self.reg_pc);
         self.reg_pc += 2;
         
         value
     }
     
     fn stack_push_byte(&mut self, val: u8) {
-        self.memory_map.store_byte(STACK_START + self.reg_sp as u16, val);
+        self.memory_interface.store_byte(STACK_START + self.reg_sp as u16, val);
         self.reg_sp -= 1;
     }
     
     fn stack_push_word(&mut self, val: u16) {
-        self.memory_map.store_word(STACK_START + (self.reg_sp - 1) as u16, val);
+        self.memory_interface.store_word(STACK_START + (self.reg_sp - 1) as u16, val);
         self.reg_sp -= 2;
     }
     
     fn stack_pop_byte(&mut self) -> u8 {
-        let val = self.memory_map.load_byte(STACK_START + (self.reg_sp + 1) as u16);
+        let val = self.memory_interface.load_byte(STACK_START + (self.reg_sp + 1) as u16);
         self.reg_sp += 1;
         val
     }
     
     fn stack_pop_word(&mut self) -> u16 {
-        let val = self.memory_map.load_word(STACK_START + (self.reg_sp + 1) as u16);
+        let val = self.memory_interface.load_word(STACK_START + (self.reg_sp + 1) as u16);
         self.reg_sp += 2;
         val
     }
@@ -378,7 +378,7 @@ impl Cpu {
     }
     
     pub fn trace_state(&mut self) {
-        self.current_instruction = self.memory_map.load_byte(self.reg_pc);
+        self.current_instruction = self.memory_interface.load_byte(self.reg_pc);
         println!("{:?}", self);
     }
     
@@ -392,8 +392,8 @@ impl Cpu {
         let addr = self.load_word_from_pc();
         
         // cpu bug: if the jmp vector goes to xxff, the msb is pulled from xx00
-        let lsb: u8 = self.memory_map.load_byte(addr);
-        let msb: u8 = self.memory_map.load_byte((addr & 0xff00) | ((addr + 1) & 0x00ff));
+        let lsb: u8 = self.memory_interface.load_byte(addr);
+        let msb: u8 = self.memory_interface.load_byte((addr & 0xff00) | ((addr + 1) & 0x00ff));
         
         self.reg_pc = (msb as u16) << 8 | lsb as u16;
     }

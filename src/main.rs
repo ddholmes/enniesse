@@ -6,6 +6,7 @@ use std::path::Path;
 extern crate regex;
 
 mod cpu;
+mod apu;
 mod nes;
 mod rom;
 mod memory;

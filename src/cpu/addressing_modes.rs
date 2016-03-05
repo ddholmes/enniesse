@@ -1,4 +1,5 @@
 use super::Cpu;
+use super::super::memory::Memory;
 
 pub trait AddressingMode {
     fn load(&self, cpu: &mut Cpu) -> u8;
@@ -30,10 +31,10 @@ pub struct MemoryAddressingMode {
 }
 impl AddressingMode for MemoryAddressingMode {
     fn load(&self, cpu: &mut Cpu) -> u8 {
-        cpu.memory_map.load_byte(self.address)
+        cpu.memory_interface.load_byte(self.address)
     }
     fn store(&self, cpu: &mut Cpu, value: u8) {
-        cpu.memory_map.store_byte(self.address, value);
+        cpu.memory_interface.store_byte(self.address, value);
     }
 }
 
@@ -66,13 +67,13 @@ impl MemoryAddressingMode {
         let val = cpu.load_byte_from_pc();
         let x = cpu.reg_x;
         
-        MemoryAddressingMode { address: cpu.memory_map.load_word_zero_page(val.wrapping_add(x)) }
+        MemoryAddressingMode { address: cpu.memory_interface.load_word_zero_page(val.wrapping_add(x)) }
     }
     
     pub fn indirect_y(cpu: &mut Cpu) -> MemoryAddressingMode {
         let val = cpu.load_byte_from_pc();
         let y = cpu.reg_y as u16;
         
-        MemoryAddressingMode { address: cpu.memory_map.load_word_zero_page(val).wrapping_add(y) }
+        MemoryAddressingMode { address: cpu.memory_interface.load_word_zero_page(val).wrapping_add(y) }
     }
 }

@@ -11,7 +11,7 @@ const LOG_REGEX: &'static str =
 
 pub struct CpuTest {
     expected_state: Vec<ExpectedState>,
-    current_instruction_index: u32
+    current_instruction_index: usize
 }
 
 impl CpuTest {

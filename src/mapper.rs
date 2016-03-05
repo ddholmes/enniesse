@@ -1,5 +1,4 @@
 use rom::Rom;
-use memory::MemoryRegion;
 
 pub trait Mapper {
     fn load_byte_prg(&mut self, addr: u16) -> u8;
@@ -8,17 +7,7 @@ pub trait Mapper {
     fn store_byte_chr(&mut self, addr: u16, val: u8);
 }
 
-impl<T> MemoryRegion for T where T: Mapper {
-    fn load_byte(&mut self, addr: u16) -> u8 {
-        self.load_byte_prg(addr)
-    }
-    
-    fn store_byte(&mut self, addr: u16, val: u8) {
-        self.store_byte_prg(addr, val);
-    }
-}
-
-pub fn load_mapper(rom: Box<Rom>) -> Box<MemoryRegion> {
+pub fn load_mapper(rom: Box<Rom>) -> Box<Mapper> {
     match rom.mapper {
         0 => Box::new(Nrom::new(rom)),
         _ => panic!("Unknown mapper: {}", rom.mapper)
