@@ -3,10 +3,6 @@ use std::fs;
 use std::io::Read;
 use std::path::Path;
 
-#[macro_use]
-extern crate enum_primitive;
-
-extern crate num;
 extern crate regex;
 
 mod cpu;
