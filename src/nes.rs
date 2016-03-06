@@ -21,6 +21,7 @@ impl Nes {
         loop {
             self.cpu.trace_state();
             self.cpu.run_instruction();
+            self.cpu.memory_interface.ppu.run();
         }
     }
 }

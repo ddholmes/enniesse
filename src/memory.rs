@@ -60,7 +60,7 @@ impl Memory for MemoryInterface {
             PPU_REG_START ... PPU_REG_END => self.ppu.load_byte(addr),
             APU_REG_START ... APU_REG_END => self.apu.load_byte(addr),
             IO_REG => panic!("IO not implemented"),
-            APU_IO_SHARED_REG => panic!("APU/IO shared not implemented"),
+            APU_IO_SHARED_REG => self.apu.load_byte(addr), // TODO: also map to io
             CART_MAPPER_START ... CART_MAPPER_END => self.mapper.load_byte_prg(addr),
             _ => panic!("Address out of range: {:X}", addr)
         }
@@ -72,7 +72,7 @@ impl Memory for MemoryInterface {
             PPU_REG_START ... PPU_REG_END => self.ppu.store_byte(addr, val),
             APU_REG_START ... APU_REG_END => self.apu.store_byte(addr, val),
             IO_REG => panic!("IO not implemented"),
-            APU_IO_SHARED_REG => panic!("APU/IO shared not implemented"),
+            APU_IO_SHARED_REG => self.apu.store_byte(addr, val), // TODO: also map to io
             CART_MAPPER_START ... CART_MAPPER_END => self.mapper.store_byte_prg(addr, val),
             _ => panic!("Address out of range: {:X}", addr)
         }

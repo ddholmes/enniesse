@@ -6,6 +6,7 @@ use std::io::{BufReader, BufRead};
 use std::fmt;
 
 use nesrs::cpu::Cpu;
+use nesrs::memory::Memory;
 use nesrs::rom::Rom;
 
 const LOG_FILE_PATH: &'static str = "tests/nestest.log";
@@ -26,6 +27,7 @@ fn test_cpu() {
         let expected_state = test.get_state_from_line(&line.unwrap());
         CpuTest::test_state(&cpu, &expected_state);
         cpu.run_instruction();
+        CpuTest::test_rom_output(&mut cpu);
     }
 }
 
@@ -36,7 +38,7 @@ pub struct CpuTest {
 
 #[cfg(test)]
 impl CpuTest {
-    pub fn new() -> CpuTest {
+    fn new() -> CpuTest {
         CpuTest {
             line_regex: regex::Regex::new(LOG_REGEX).unwrap()
         }
@@ -74,7 +76,16 @@ impl CpuTest {
                     state.p  == p           &&
                     state.sp == cpu.reg_sp;
                     
+        // compare against the log output
         assert!(test, "Expected:\n{}\nActual:\n{:?}", state, cpu);
+    }
+    
+    fn test_rom_output(cpu: &mut Cpu) {
+        // the test rom puts its results in memory locations 0x02 and 0x03
+        let result = cpu.memory_interface.load_byte(0x02);
+        assert!(result == 0, "Test set 1 failed {:02X}\n{:?}", result, cpu);
+        let result = cpu.memory_interface.load_byte(0x03);
+        assert!(result == 0, "Test set 2 failed {:02X}\n{:?}", result, cpu);
     }
 }
 

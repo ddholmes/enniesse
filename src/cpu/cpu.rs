@@ -47,7 +47,6 @@ impl Cpu {
     pub fn reset(&mut self) {
         // TODO: accurately model reset
         
-        // TODO: uncomment to start in the appropriate place
         self.reg_pc = self.memory_interface.load_word(RESET_VECTOR);
     }
     
@@ -59,6 +58,7 @@ impl Cpu {
     
     pub fn execute_instruction(&mut self, opcode: u8) {
         match opcode {
+            0x00 => { self.brk(); }
             0x01 => { let mode = MemoryAddressingMode::indirect_x(self); self.ora(mode); },
             0x03 => { let mode = MemoryAddressingMode::indirect_x(self); self.slo(mode); }, // unofficial
             0x04 => { let mode = ImmediateAddressingMode; self.nop_with_read(mode); }, // unofficial
@@ -380,11 +380,24 @@ impl Cpu {
     
     pub fn trace_state(&mut self) {
         self.current_instruction = self.memory_interface.load_byte(self.reg_pc);
-        println!("{:?}", self);
+        let result1 = self.memory_interface.load_byte(0x02);
+        let result2 = self.memory_interface.load_byte(0x03);
+        println!("{:?} R1:{:02X} R2:{:02X}", self, result1, result2);
     }
     
     
     // instructions
+    
+    fn brk(&mut self) {
+        let pc = self.reg_pc;
+        let status = self.reg_p.as_u8();
+        
+        self.stack_push_word(pc + 1);
+        self.stack_push_byte(status);
+        
+        self.reg_p.break_command = true;
+        self.reg_pc = self.memory_interface.load_word(BRK_VECTOR);
+    }
     
     fn jmp(&mut self) {
         self.reg_pc = self.load_word_from_pc();

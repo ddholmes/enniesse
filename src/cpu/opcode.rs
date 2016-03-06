@@ -1,6 +1,7 @@
 
 pub fn decode(opcode: u8) -> &'static str {
     match opcode {
+        0x00 => { "brk" },
         0x01 => { "ora" },
         0x03 => { "*slo" }, // unofficial
         0x04 => { "*nop" }, // unofficial
