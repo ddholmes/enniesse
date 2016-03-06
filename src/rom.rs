@@ -1,4 +1,6 @@
 use std::io::Read;
+use std::path::Path;
+use std::fs;
 
 const FILE_HEADER: [u8; 4] = *b"NES\x1a";
 
@@ -11,6 +13,22 @@ pub struct Rom {
     
     pub prg_rom: Box<[u8]>,
     pub chr_rom: Box<[u8]>
+}
+
+impl Rom {
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Rom {
+        let rom_buf = read_file(path);
+        
+        Rom::from(rom_buf)
+    }
+}
+
+fn read_file<P: AsRef<Path>>(path: P) -> Box<[u8]> {
+    let mut rom_file = fs::File::open(path).unwrap();
+    let mut rom_buf = Vec::<u8>::new();
+    let _ = rom_file.read_to_end(&mut rom_buf);
+    
+    rom_buf.into_boxed_slice()
 }
 
 // TODO: load from reader rather than a buffer?

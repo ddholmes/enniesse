@@ -47,7 +47,7 @@ impl Cpu {
         // TODO: accurately model reset
         
         // TODO: uncomment to start in the appropriate place
-        //self.reg_pc = self.memory_interface.load_word(RESET_VECTOR);
+        self.reg_pc = self.memory_interface.load_word(RESET_VECTOR);
     }
     
     pub fn run_instruction(&mut self) {
@@ -764,14 +764,14 @@ impl fmt::Debug for Cpu {
 
 #[derive(Debug)]
 pub struct StatusRegister {
-    carry: bool,
-    zero: bool,
-    interrupt_disable: bool,
-    decimal_mode: bool,
-    break_command: bool,
-    bit5: bool,
-    overflow: bool,
-    negative: bool
+    pub carry: bool,
+    pub zero: bool,
+    pub interrupt_disable: bool,
+    pub decimal_mode: bool,
+    pub break_command: bool,
+    pub bit5: bool,
+    pub overflow: bool,
+    pub negative: bool
 }
 
 impl StatusRegister {
