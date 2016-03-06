@@ -1,7 +1,6 @@
 use super::super::memory;
 use super::super::memory::{Memory, MemoryInterface};
 use super::super::rom::Rom;
-use super::super::ppu;
 use super::addressing_modes::*;
 use super::opcode;
 
@@ -322,7 +321,7 @@ impl Cpu {
         
         for addr in start_addr .. end_addr {
             let val = self.load_byte(addr);
-            self.store_byte(ppu::OAM_DATA, val);
+            self.store_byte(memory::PPU_OAM_DATA, val);
             
             self.cycles += 2;
         }

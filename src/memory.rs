@@ -13,6 +13,7 @@ const RAM_SIZE: u16 = 2048;
 const RAM_START: u16         = 0x0000;
 const RAM_END: u16           = 0x1fff;
 const PPU_REG_START: u16     = 0x2000;
+pub const PPU_OAM_DATA: u16  = 0x2004;
 const PPU_REG_END: u16       = 0x3fff;
 const APU_REG_START: u16     = 0x4000;
 const APU_REG_END: u16       = 0x4013;

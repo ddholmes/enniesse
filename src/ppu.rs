@@ -6,14 +6,14 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 // the PPU register addresses repeat every 8 bits starting at 2000, so mask them to 0-7
-const PPU_CTRL: u16     = 0x2000 & 0x07;
-const PPU_MASK: u16     = 0x2001 & 0x07;
-const PPU_STATUS: u16   = 0x2002 & 0x07;
-const OAM_ADDR: u16     = 0x2003 & 0x07;
-pub const OAM_DATA: u16 = 0x2004 & 0x07;
-const PPU_SCROLL: u16   = 0x2005 & 0x07;
-const PPU_ADDR: u16     = 0x2006 & 0x07;
-const PPU_DATA: u16     = 0x2007 & 0x07;
+const PPU_CTRL: u16   = 0x2000 & 0x07;
+const PPU_MASK: u16   = 0x2001 & 0x07;
+const PPU_STATUS: u16 = 0x2002 & 0x07;
+const OAM_ADDR: u16   = 0x2003 & 0x07;
+const OAM_DATA: u16   = 0x2004 & 0x07;
+const PPU_SCROLL: u16 = 0x2005 & 0x07;
+const PPU_ADDR: u16   = 0x2006 & 0x07;
+const PPU_DATA: u16   = 0x2007 & 0x07;
 
 // memory map
 const MAPPER_START: u16    = 0x0000;
