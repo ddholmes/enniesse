@@ -1,6 +1,7 @@
 use super::rom::Rom;
 use super::mapper;
 use super::apu::Apu;
+use super::ppu::Ppu;
 
 const RAM_START: u16 = 0x0000;
 const RAM_END: u16 = 0x1fff;
@@ -37,7 +38,8 @@ pub trait Memory {
 pub struct MemoryInterface {
     pub ram: Ram,
     pub mapper: Box<mapper::Mapper>,
-    pub apu: Apu
+    pub apu: Apu,
+    pub ppu: Ppu
 }
 
 impl MemoryInterface {
@@ -45,7 +47,8 @@ impl MemoryInterface {
         MemoryInterface {
             ram: Ram::new(),
             mapper: mapper::load_mapper(rom),
-            apu: Apu::new()
+            apu: Apu::new(),
+            ppu: Ppu::new()
         }
     }
 }
@@ -54,7 +57,7 @@ impl Memory for MemoryInterface {
     fn load_byte(&mut self, addr: u16) -> u8 {
         match addr {
             RAM_START ... RAM_END => self.ram.load_byte(addr),
-            PPU_REG_START ... PPU_REG_END => panic!("PPU not implemented"),
+            PPU_REG_START ... PPU_REG_END => self.ppu.load_byte(addr),
             APU_REG_START ... APU_REG_END => self.apu.load_byte(addr),
             IO_REG => panic!("IO not implemented"),
             APU_IO_SHARED_REG => panic!("APU/IO shared not implemented"),
@@ -66,7 +69,7 @@ impl Memory for MemoryInterface {
     fn store_byte(&mut self, addr: u16, val: u8) {
         match addr {
             RAM_START ... RAM_END => self.ram.store_byte(addr, val),
-            PPU_REG_START ... PPU_REG_END => panic!("PPU not implemented"),
+            PPU_REG_START ... PPU_REG_END => self.ppu.store_byte(addr, val),
             APU_REG_START ... APU_REG_END => self.apu.store_byte(addr, val),
             IO_REG => panic!("IO not implemented"),
             APU_IO_SHARED_REG => panic!("APU/IO shared not implemented"),

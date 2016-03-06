@@ -1,6 +1,7 @@
 use super::super::memory::{Memory, MemoryInterface};
 use super::super::rom::Rom;
 use super::addressing_modes::*;
+use super::opcode;
 
 use std::fmt;
 
@@ -60,21 +61,21 @@ impl Cpu {
         match opcode {
             0x01 => { let mode = MemoryAddressingMode::indirect_x(self); self.ora(mode); },
             0x03 => { let mode = MemoryAddressingMode::indirect_x(self); self.slo(mode); }, // unofficial
-            0x04 => { let mode = ImmediateAddressingMode; self.nop_unofficial(mode); },
+            0x04 => { let mode = ImmediateAddressingMode; self.nop_with_read(mode); }, // unofficial
             0x05 => { let mode = MemoryAddressingMode::zero_page(self); self.ora(mode); },
             0x06 => { let mode = MemoryAddressingMode::zero_page(self); self.asl(mode); },
             0x07 => { let mode = MemoryAddressingMode::zero_page(self); self.slo(mode); }, // unofficial
             0x08 => { self.php(); },
             0x09 => { let mode = ImmediateAddressingMode; self.ora(mode); },
             0x0a => { let mode = AccumulatorAddressingMode; self.asl(mode); },
-            0x0c => { let mode = MemoryAddressingMode::absolute(self); self.nop_unofficial(mode); },
+            0x0c => { let mode = MemoryAddressingMode::absolute(self); self.nop_with_read(mode); }, // unofficial
             0x0d => { let mode = MemoryAddressingMode::absolute(self); self.ora(mode); },
             0x0e => { let mode = MemoryAddressingMode::absolute(self); self.asl(mode); },
             0x0f => { let mode = MemoryAddressingMode::absolute(self); self.slo(mode); }, // unofficial
             0x10 => { self.bpl(); },
             0x11 => { let mode = MemoryAddressingMode::indirect_y(self); self.ora(mode); },
             0x13 => { let mode = MemoryAddressingMode::indirect_y(self); self.slo(mode); }, // unofficial
-            0x14 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_unofficial(mode); },
+            0x14 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_with_read(mode); }, // unofficial
             0x15 => { let mode = MemoryAddressingMode::zero_page_x(self); self.ora(mode); },
             0x16 => { let mode = MemoryAddressingMode::zero_page_x(self); self.asl(mode); },
             0x17 => { let mode = MemoryAddressingMode::zero_page_x(self); self.slo(mode); }, // unofficial
@@ -82,7 +83,7 @@ impl Cpu {
             0x19 => { let mode = MemoryAddressingMode::absolute_y(self); self.ora(mode); },
             0x1a => { self.nop(); } // unofficial
             0x1b => { let mode = MemoryAddressingMode::absolute_y(self); self.slo(mode); }, // unofficial
-            0x1c => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_unofficial(mode); },
+            0x1c => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_with_read(mode); }, // unofficial
             0x1d => { let mode = MemoryAddressingMode::absolute_x(self); self.ora(mode); },
             0x1e => { let mode = MemoryAddressingMode::absolute_x(self); self.asl(mode); },
             0x1f => { let mode = MemoryAddressingMode::absolute_x(self); self.slo(mode); }, // unofficial
@@ -103,7 +104,7 @@ impl Cpu {
             0x30 => { self.bmi(); },
             0x31 => { let mode = MemoryAddressingMode::indirect_y(self); self.and(mode); },
             0x33 => { let mode = MemoryAddressingMode::indirect_y(self); self.rla(mode); }, // unofficial
-            0x34 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_unofficial(mode); },
+            0x34 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_with_read(mode); }, // unofficial
             0x35 => { let mode = MemoryAddressingMode::zero_page_x(self); self.and(mode); },
             0x36 => { let mode = MemoryAddressingMode::zero_page_x(self); self.rol(mode); },
             0x37 => { let mode = MemoryAddressingMode::zero_page_x(self); self.rla(mode); }, // unofficial
@@ -111,14 +112,14 @@ impl Cpu {
             0x39 => { let mode = MemoryAddressingMode::absolute_y(self); self.and(mode); },
             0x3a => { self.nop(); } // unofficial
             0x3b => { let mode = MemoryAddressingMode::absolute_y(self); self.rla(mode); }, // unofficial
-            0x3c => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_unofficial(mode); },
+            0x3c => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_with_read(mode); }, // unofficial
             0x3d => { let mode = MemoryAddressingMode::absolute_x(self); self.and(mode); },
             0x3e => { let mode = MemoryAddressingMode::absolute_x(self); self.rol(mode); },
             0x3f => { let mode = MemoryAddressingMode::absolute_x(self); self.rla(mode); }, // unofficial
             0x40 => { self.rti(); },
             0x41 => { let mode = MemoryAddressingMode::indirect_x(self); self.eor(mode); },
             0x43 => { let mode = MemoryAddressingMode::indirect_x(self); self.sre(mode); }, // unofficial
-            0x44 => { let mode = ImmediateAddressingMode; self.nop_unofficial(mode); },
+            0x44 => { let mode = ImmediateAddressingMode; self.nop_with_read(mode); }, // unofficial
             0x45 => { let mode = MemoryAddressingMode::zero_page(self); self.eor(mode); },
             0x46 => { let mode = MemoryAddressingMode::zero_page(self); self.lsr(mode); },
             0x47 => { let mode = MemoryAddressingMode::zero_page(self); self.sre(mode); }, // unofficial
@@ -132,21 +133,21 @@ impl Cpu {
             0x50 => { self.bvc(); },
             0x51 => { let mode = MemoryAddressingMode::indirect_y(self); self.eor(mode); },
             0x53 => { let mode = MemoryAddressingMode::indirect_y(self); self.sre(mode); }, // unofficial
-            0x54 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_unofficial(mode); },
+            0x54 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_with_read(mode); }, // unofficial
             0x55 => { let mode = MemoryAddressingMode::zero_page_x(self); self.eor(mode); },
             0x56 => { let mode = MemoryAddressingMode::zero_page_x(self); self.lsr(mode); },
             0x57 => { let mode = MemoryAddressingMode::zero_page_x(self); self.sre(mode); }, // unofficial
             0x59 => { let mode = MemoryAddressingMode::absolute_y(self); self.eor(mode); },
             0x5a => { self.nop(); } // unofficial
             0x5b => { let mode = MemoryAddressingMode::absolute_y(self); self.sre(mode); }, // unofficial
-            0x5c => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_unofficial(mode); },
+            0x5c => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_with_read(mode); }, // unofficial
             0x5d => { let mode = MemoryAddressingMode::absolute_x(self); self.eor(mode); },
             0x5e => { let mode = MemoryAddressingMode::absolute_x(self); self.lsr(mode); },
             0x5f => { let mode = MemoryAddressingMode::absolute_x(self); self.sre(mode); }, // unofficial
             0x60 => { self.rts(); },
             0x61 => { let mode = MemoryAddressingMode::indirect_x(self); self.adc(mode); },
             0x63 => { let mode = MemoryAddressingMode::indirect_x(self); self.rra(mode); }, // unofficial
-            0x64 => { let mode = ImmediateAddressingMode; self.nop_unofficial(mode); },
+            0x64 => { let mode = ImmediateAddressingMode; self.nop_with_read(mode); }, // unofficial
             0x65 => { let mode = MemoryAddressingMode::zero_page(self); self.adc(mode); },
             0x66 => { let mode = MemoryAddressingMode::zero_page(self); self.ror(mode); },
             0x67 => { let mode = MemoryAddressingMode::zero_page(self); self.rra(mode); }, // unofficial
@@ -160,7 +161,7 @@ impl Cpu {
             0x70 => { self.bvs(); },
             0x71 => { let mode = MemoryAddressingMode::indirect_y(self); self.adc(mode); },
             0x73 => { let mode = MemoryAddressingMode::indirect_y(self); self.rra(mode); }, // unofficial
-            0x74 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_unofficial(mode); },
+            0x74 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_with_read(mode); }, // unofficial
             0x75 => { let mode = MemoryAddressingMode::zero_page_x(self); self.adc(mode); },
             0x76 => { let mode = MemoryAddressingMode::zero_page_x(self); self.ror(mode); },
             0x77 => { let mode = MemoryAddressingMode::zero_page_x(self); self.rra(mode); }, // unofficial
@@ -168,11 +169,11 @@ impl Cpu {
             0x79 => { let mode = MemoryAddressingMode::absolute_y(self); self.adc(mode); },
             0x7a => { self.nop(); } // unofficial
             0x7b => { let mode = MemoryAddressingMode::absolute_y(self); self.rra(mode); }, // unofficial
-            0x7c => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_unofficial(mode); },
+            0x7c => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_with_read(mode); }, // unofficial
             0x7d => { let mode = MemoryAddressingMode::absolute_x(self); self.adc(mode); },
             0x7e => { let mode = MemoryAddressingMode::absolute_x(self); self.ror(mode); },
             0x7f => { let mode = MemoryAddressingMode::absolute_x(self); self.rra(mode); }, // unofficial
-            0x80 => { let mode = ImmediateAddressingMode; self.nop_unofficial(mode); },
+            0x80 => { let mode = ImmediateAddressingMode; self.nop_with_read(mode); }, // unofficial
             0x81 => { let mode = MemoryAddressingMode::indirect_x(self); self.sta(mode); },
             0x83 => { let mode = MemoryAddressingMode::indirect_x(self); self.sax(mode); }, // unofficial
             0x84 => { let mode = MemoryAddressingMode::zero_page(self); self.sty(mode); },
@@ -241,7 +242,7 @@ impl Cpu {
             0xd0 => { self.bne(); },
             0xd1 => { let mode = MemoryAddressingMode::indirect_y(self); self.cmp(mode); },
             0xd3 => { let mode = MemoryAddressingMode::indirect_y(self); self.dcp(mode); }, // unofficial
-            0xd4 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_unofficial(mode); },
+            0xd4 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_with_read(mode); }, // unofficial
             0xd5 => { let mode = MemoryAddressingMode::zero_page_x(self); self.cmp(mode); },
             0xd6 => { let mode = MemoryAddressingMode::zero_page_x(self); self.dec(mode); },
             0xd7 => { let mode = MemoryAddressingMode::zero_page_x(self); self.dcp(mode); }, // unofficial
@@ -249,7 +250,7 @@ impl Cpu {
             0xd9 => { let mode = MemoryAddressingMode::absolute_y(self); self.cmp(mode); },
             0xda => { self.nop(); } // unofficial
             0xdb => { let mode = MemoryAddressingMode::absolute_y(self); self.dcp(mode); }, // unofficial
-            0xdc => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_unofficial(mode); },
+            0xdc => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_with_read(mode); }, // unofficial
             0xdd => { let mode = MemoryAddressingMode::absolute_x(self); self.cmp(mode); },
             0xde => { let mode = MemoryAddressingMode::absolute_x(self); self.dec(mode); },
             0xdf => { let mode = MemoryAddressingMode::absolute_x(self); self.dcp(mode); }, // unofficial
@@ -271,7 +272,7 @@ impl Cpu {
             0xf0 => { self.beq(); },
             0xf1 => { let mode = MemoryAddressingMode::indirect_y(self); self.sbc(mode); },
             0xf3 => { let mode = MemoryAddressingMode::indirect_y(self); self.isc(mode); }, // unofficial
-            0xf4 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_unofficial(mode); },
+            0xf4 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_with_read(mode); }, // unofficial
             0xf5 => { let mode = MemoryAddressingMode::zero_page_x(self); self.sbc(mode); },
             0xf6 => { let mode = MemoryAddressingMode::zero_page_x(self); self.inc(mode); },
             0xf7 => { let mode = MemoryAddressingMode::zero_page_x(self); self.isc(mode); }, // unofficial
@@ -279,7 +280,7 @@ impl Cpu {
             0xf9 => { let mode = MemoryAddressingMode::absolute_y(self); self.sbc(mode); },
             0xfa => { self.nop(); } // unofficial
             0xfb => { let mode = MemoryAddressingMode::absolute_y(self); self.isc(mode); }, // unofficial
-            0xfc => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_unofficial(mode); },
+            0xfc => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_with_read(mode); }, // unofficial
             0xfd => { let mode = MemoryAddressingMode::absolute_x(self); self.sbc(mode); },
             0xfe => { let mode = MemoryAddressingMode::absolute_x(self); self.inc(mode); },
             0xff => { let mode = MemoryAddressingMode::absolute_x(self); self.isc(mode); }, // unofficial
@@ -384,6 +385,7 @@ impl Cpu {
     
     
     // instructions
+    
     fn jmp(&mut self) {
         self.reg_pc = self.load_word_from_pc();
     }
@@ -673,7 +675,9 @@ impl Cpu {
     }
     
     // unofficial opcodes
-    fn nop_unofficial<T:AddressingMode>(&mut self, mode: T) {
+    
+    // loads from memory but does nothing with it
+    fn nop_with_read<T:AddressingMode>(&mut self, mode: T) {
         mode.load(self);
     }
     
@@ -751,9 +755,9 @@ impl Cpu {
 
 impl fmt::Debug for Cpu {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:04X} {:02X} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:",
+        write!(f, "{:04X} {:20} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:",
             self.reg_pc,
-            self.current_instruction,
+            opcode::decode(self.current_instruction),
             self.reg_a,
             self.reg_x,
             self.reg_y,
