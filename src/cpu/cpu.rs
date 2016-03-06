@@ -1,5 +1,7 @@
+use super::super::memory;
 use super::super::memory::{Memory, MemoryInterface};
 use super::super::rom::Rom;
+use super::super::ppu;
 use super::addressing_modes::*;
 use super::opcode;
 
@@ -25,6 +27,8 @@ pub struct Cpu {
     // status register
     pub reg_p: StatusRegister,
     
+    pub cycles: u64,
+    
     pub memory_interface: MemoryInterface,
     
     current_instruction: u8,
@@ -39,6 +43,7 @@ impl Cpu {
             reg_pc: 0xc000,
             reg_sp: 0xfd,
             reg_p: StatusRegister::from(0x24),
+            cycles: 0,
             memory_interface: MemoryInterface::new(rom),
             current_instruction: 0
         }
@@ -47,7 +52,7 @@ impl Cpu {
     pub fn reset(&mut self) {
         // TODO: accurately model reset
         
-        self.reg_pc = self.memory_interface.load_word(RESET_VECTOR);
+        self.reg_pc = self.load_word(RESET_VECTOR);
     }
     
     pub fn run_instruction(&mut self) {
@@ -289,37 +294,64 @@ impl Cpu {
     }
     
     pub fn load_byte_from_pc(&mut self) -> u8 {
-        let value = self.memory_interface.load_byte(self.reg_pc);
+        let pc = self.reg_pc;
+        let value = self.load_byte(pc);
         self.reg_pc += 1;
         
         value
     }
     
     pub fn load_word_from_pc(&mut self) -> u16 {
-        let value = self.memory_interface.load_word(self.reg_pc);
+        let pc = self.reg_pc;
+        let value = self.load_word(pc);
         self.reg_pc += 2;
         
         value
     }
     
+    fn ppu_oam_dma(&mut self, val: u8) {
+        let start_addr = (val as u16) << 8;
+        let end_addr = ((val as u16) << 8) | 0x00ff;
+        
+        // "1 dummy read cycle while waiting for writes to complete"
+        self.cycles += 1;
+        // "+1 if on an odd CPU cycle"
+        if self.cycles % 2 == 1 {
+            self.cycles += 1;
+        }
+        
+        for addr in start_addr .. end_addr {
+            let val = self.load_byte(addr);
+            self.store_byte(ppu::OAM_DATA, val);
+            
+            self.cycles += 2;
+        }
+    }
+    
+    // instruction helpers
+    
     fn stack_push_byte(&mut self, val: u8) {
-        self.memory_interface.store_byte(STACK_START + self.reg_sp as u16, val);
+        let stack_addr = STACK_START + self.reg_sp as u16;
+        self.store_byte(stack_addr, val);
         self.reg_sp -= 1;
     }
     
     fn stack_push_word(&mut self, val: u16) {
-        self.memory_interface.store_word(STACK_START + (self.reg_sp - 1) as u16, val);
+        let stack_addr = STACK_START + (self.reg_sp - 1) as u16;
+        self.store_word(stack_addr, val);
         self.reg_sp -= 2;
     }
     
     fn stack_pop_byte(&mut self) -> u8 {
-        let val = self.memory_interface.load_byte(STACK_START + (self.reg_sp + 1) as u16);
+        let stack_addr = STACK_START + (self.reg_sp + 1) as u16;
+        let val = self.load_byte(stack_addr);
         self.reg_sp += 1;
         val
     }
     
     fn stack_pop_word(&mut self) -> u16 {
-        let val = self.memory_interface.load_word(STACK_START + (self.reg_sp + 1) as u16);
+        let stack_addr = STACK_START + (self.reg_sp + 1) as u16;
+        let val = self.load_word(stack_addr);
         self.reg_sp += 2;
         val
     }
@@ -379,10 +411,10 @@ impl Cpu {
     }
     
     pub fn trace_state(&mut self) {
-        self.current_instruction = self.memory_interface.load_byte(self.reg_pc);
-        let result1 = self.memory_interface.load_byte(0x02);
-        let result2 = self.memory_interface.load_byte(0x03);
-        println!("{:?} R1:{:02X} R2:{:02X}", self, result1, result2);
+        let pc = self.reg_pc;
+        self.current_instruction = self.load_byte(pc);
+        
+        println!("{:?}", self);
     }
     
     
@@ -396,7 +428,7 @@ impl Cpu {
         self.stack_push_byte(status);
         
         self.reg_p.break_command = true;
-        self.reg_pc = self.memory_interface.load_word(BRK_VECTOR);
+        self.reg_pc = self.load_word(BRK_VECTOR);
     }
     
     fn jmp(&mut self) {
@@ -407,8 +439,8 @@ impl Cpu {
         let addr = self.load_word_from_pc();
         
         // cpu bug: if the jmp vector goes to xxff, the msb is pulled from xx00
-        let lsb: u8 = self.memory_interface.load_byte(addr);
-        let msb: u8 = self.memory_interface.load_byte((addr & 0xff00) | ((addr + 1) & 0x00ff));
+        let lsb: u8 = self.load_byte(addr);
+        let msb: u8 = self.load_byte((addr & 0xff00) | ((addr + 1) & 0x00ff));
         
         self.reg_pc = (msb as u16) << 8 | lsb as u16;
     }
@@ -763,6 +795,19 @@ impl Cpu {
         mode.store(self, result);
         
         self.adc(mode);
+    }
+}
+
+impl Memory for Cpu {
+    fn load_byte(&mut self, addr: u16) -> u8 {
+        self.memory_interface.load_byte(addr)
+    }
+    fn store_byte(&mut self, addr: u16, val: u8) {
+        if addr == memory::PPU_OAM_DMA {
+            self.ppu_oam_dma(val);
+        } else {
+            self.memory_interface.store_byte(addr, val);
+        }
     }
 }
 
