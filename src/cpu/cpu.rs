@@ -1,7 +1,8 @@
 use super::super::memory;
 use super::super::memory::{Memory, MemoryInterface};
 use super::super::rom::Rom;
-use super::addressing_modes::*;
+use super::addressing_mode;
+use super::addressing_mode::AddressingMode;
 use super::opcode;
 
 use std::fmt;
@@ -60,234 +61,247 @@ impl Cpu {
         self.execute_instruction(opcode);
     }
     
-    pub fn execute_instruction(&mut self, opcode: u8) {
+    pub fn execute_instruction(&mut self, opcode: u8) {        
+        macro_rules! instruction {
+            ($i:ident, $c:expr) => {{
+                self.$i();
+                self.cycles += $c;
+            }};
+            ($i:ident, $am:path, $c: expr) => {{
+                let mode = $am(self);
+                self.$i(mode);
+                self.cycles += $c;
+            }};
+        }
+        // instruction macro format: (instruction, addressingmode [optional])
         match opcode {
-            0x00 => { self.brk(); }
-            0x01 => { let mode = MemoryAddressingMode::indirect_x(self); self.ora(mode); },
-            0x03 => { let mode = MemoryAddressingMode::indirect_x(self); self.slo(mode); }, // unofficial
-            0x04 => { let mode = ImmediateAddressingMode; self.nop_with_read(mode); }, // unofficial
-            0x05 => { let mode = MemoryAddressingMode::zero_page(self); self.ora(mode); },
-            0x06 => { let mode = MemoryAddressingMode::zero_page(self); self.asl(mode); },
-            0x07 => { let mode = MemoryAddressingMode::zero_page(self); self.slo(mode); }, // unofficial
-            0x08 => { self.php(); },
-            0x09 => { let mode = ImmediateAddressingMode; self.ora(mode); },
-            0x0a => { let mode = AccumulatorAddressingMode; self.asl(mode); },
-            0x0c => { let mode = MemoryAddressingMode::absolute(self); self.nop_with_read(mode); }, // unofficial
-            0x0d => { let mode = MemoryAddressingMode::absolute(self); self.ora(mode); },
-            0x0e => { let mode = MemoryAddressingMode::absolute(self); self.asl(mode); },
-            0x0f => { let mode = MemoryAddressingMode::absolute(self); self.slo(mode); }, // unofficial
-            0x10 => { self.bpl(); },
-            0x11 => { let mode = MemoryAddressingMode::indirect_y(self); self.ora(mode); },
-            0x13 => { let mode = MemoryAddressingMode::indirect_y(self); self.slo(mode); }, // unofficial
-            0x14 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_with_read(mode); }, // unofficial
-            0x15 => { let mode = MemoryAddressingMode::zero_page_x(self); self.ora(mode); },
-            0x16 => { let mode = MemoryAddressingMode::zero_page_x(self); self.asl(mode); },
-            0x17 => { let mode = MemoryAddressingMode::zero_page_x(self); self.slo(mode); }, // unofficial
-            0x18 => { self.clc(); },
-            0x19 => { let mode = MemoryAddressingMode::absolute_y(self); self.ora(mode); },
-            0x1a => { self.nop(); } // unofficial
-            0x1b => { let mode = MemoryAddressingMode::absolute_y(self); self.slo(mode); }, // unofficial
-            0x1c => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_with_read(mode); }, // unofficial
-            0x1d => { let mode = MemoryAddressingMode::absolute_x(self); self.ora(mode); },
-            0x1e => { let mode = MemoryAddressingMode::absolute_x(self); self.asl(mode); },
-            0x1f => { let mode = MemoryAddressingMode::absolute_x(self); self.slo(mode); }, // unofficial
-            0x20 => { self.jsr(); },
-            0x21 => { let mode = MemoryAddressingMode::indirect_x(self); self.and(mode); },
-            0x23 => { let mode = MemoryAddressingMode::indirect_x(self); self.rla(mode); }, // unofficial
-            0x24 => { let mode = MemoryAddressingMode::zero_page(self); self.bit(mode); },
-            0x25 => { let mode = MemoryAddressingMode::zero_page(self); self.and(mode); },
-            0x26 => { let mode = MemoryAddressingMode::zero_page(self); self.rol(mode); },
-            0x27 => { let mode = MemoryAddressingMode::zero_page(self); self.rla(mode); }, // unofficial
-            0x28 => { self.plp(); },
-            0x29 => { let mode = ImmediateAddressingMode; self.and(mode); },
-            0x2a => { let mode = AccumulatorAddressingMode; self.rol(mode); },
-            0x2c => { let mode = MemoryAddressingMode::absolute(self); self.bit(mode); },
-            0x2d => { let mode = MemoryAddressingMode::absolute(self); self.and(mode); },
-            0x2e => { let mode = MemoryAddressingMode::absolute(self); self.rol(mode); },
-            0x2f => { let mode = MemoryAddressingMode::absolute(self); self.rla(mode); }, // unofficial
-            0x30 => { self.bmi(); },
-            0x31 => { let mode = MemoryAddressingMode::indirect_y(self); self.and(mode); },
-            0x33 => { let mode = MemoryAddressingMode::indirect_y(self); self.rla(mode); }, // unofficial
-            0x34 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_with_read(mode); }, // unofficial
-            0x35 => { let mode = MemoryAddressingMode::zero_page_x(self); self.and(mode); },
-            0x36 => { let mode = MemoryAddressingMode::zero_page_x(self); self.rol(mode); },
-            0x37 => { let mode = MemoryAddressingMode::zero_page_x(self); self.rla(mode); }, // unofficial
-            0x38 => { self.sec(); },
-            0x39 => { let mode = MemoryAddressingMode::absolute_y(self); self.and(mode); },
-            0x3a => { self.nop(); } // unofficial
-            0x3b => { let mode = MemoryAddressingMode::absolute_y(self); self.rla(mode); }, // unofficial
-            0x3c => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_with_read(mode); }, // unofficial
-            0x3d => { let mode = MemoryAddressingMode::absolute_x(self); self.and(mode); },
-            0x3e => { let mode = MemoryAddressingMode::absolute_x(self); self.rol(mode); },
-            0x3f => { let mode = MemoryAddressingMode::absolute_x(self); self.rla(mode); }, // unofficial
-            0x40 => { self.rti(); },
-            0x41 => { let mode = MemoryAddressingMode::indirect_x(self); self.eor(mode); },
-            0x43 => { let mode = MemoryAddressingMode::indirect_x(self); self.sre(mode); }, // unofficial
-            0x44 => { let mode = ImmediateAddressingMode; self.nop_with_read(mode); }, // unofficial
-            0x45 => { let mode = MemoryAddressingMode::zero_page(self); self.eor(mode); },
-            0x46 => { let mode = MemoryAddressingMode::zero_page(self); self.lsr(mode); },
-            0x47 => { let mode = MemoryAddressingMode::zero_page(self); self.sre(mode); }, // unofficial
-            0x48 => { self.pha(); },
-            0x49 => { let mode = ImmediateAddressingMode; self.eor(mode); },
-            0x4a => { let mode = AccumulatorAddressingMode; self.lsr(mode); },
-            0x4c => { self.jmp(); },
-            0x4d => { let mode = MemoryAddressingMode::absolute(self); self.eor(mode); },
-            0x4e => { let mode = MemoryAddressingMode::absolute(self); self.lsr(mode); },
-            0x4f => { let mode = MemoryAddressingMode::absolute(self); self.sre(mode); }, // unofficial
-            0x50 => { self.bvc(); },
-            0x51 => { let mode = MemoryAddressingMode::indirect_y(self); self.eor(mode); },
-            0x53 => { let mode = MemoryAddressingMode::indirect_y(self); self.sre(mode); }, // unofficial
-            0x54 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_with_read(mode); }, // unofficial
-            0x55 => { let mode = MemoryAddressingMode::zero_page_x(self); self.eor(mode); },
-            0x56 => { let mode = MemoryAddressingMode::zero_page_x(self); self.lsr(mode); },
-            0x57 => { let mode = MemoryAddressingMode::zero_page_x(self); self.sre(mode); }, // unofficial
-            0x59 => { let mode = MemoryAddressingMode::absolute_y(self); self.eor(mode); },
-            0x5a => { self.nop(); } // unofficial
-            0x5b => { let mode = MemoryAddressingMode::absolute_y(self); self.sre(mode); }, // unofficial
-            0x5c => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_with_read(mode); }, // unofficial
-            0x5d => { let mode = MemoryAddressingMode::absolute_x(self); self.eor(mode); },
-            0x5e => { let mode = MemoryAddressingMode::absolute_x(self); self.lsr(mode); },
-            0x5f => { let mode = MemoryAddressingMode::absolute_x(self); self.sre(mode); }, // unofficial
-            0x60 => { self.rts(); },
-            0x61 => { let mode = MemoryAddressingMode::indirect_x(self); self.adc(mode); },
-            0x63 => { let mode = MemoryAddressingMode::indirect_x(self); self.rra(mode); }, // unofficial
-            0x64 => { let mode = ImmediateAddressingMode; self.nop_with_read(mode); }, // unofficial
-            0x65 => { let mode = MemoryAddressingMode::zero_page(self); self.adc(mode); },
-            0x66 => { let mode = MemoryAddressingMode::zero_page(self); self.ror(mode); },
-            0x67 => { let mode = MemoryAddressingMode::zero_page(self); self.rra(mode); }, // unofficial
-            0x68 => { self.pla(); },
-            0x69 => { let mode = ImmediateAddressingMode; self.adc(mode); },
-            0x6a => { let mode = AccumulatorAddressingMode; self.ror(mode); },
-            0x6c => { self.jmp_indirect(); },
-            0x6d => { let mode = MemoryAddressingMode::absolute(self); self.adc(mode); },
-            0x6e => { let mode = MemoryAddressingMode::absolute(self); self.ror(mode); },
-            0x6f => { let mode = MemoryAddressingMode::absolute(self); self.rra(mode); }, // unofficial
-            0x70 => { self.bvs(); },
-            0x71 => { let mode = MemoryAddressingMode::indirect_y(self); self.adc(mode); },
-            0x73 => { let mode = MemoryAddressingMode::indirect_y(self); self.rra(mode); }, // unofficial
-            0x74 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_with_read(mode); }, // unofficial
-            0x75 => { let mode = MemoryAddressingMode::zero_page_x(self); self.adc(mode); },
-            0x76 => { let mode = MemoryAddressingMode::zero_page_x(self); self.ror(mode); },
-            0x77 => { let mode = MemoryAddressingMode::zero_page_x(self); self.rra(mode); }, // unofficial
-            0x78 => { self.sei(); },
-            0x79 => { let mode = MemoryAddressingMode::absolute_y(self); self.adc(mode); },
-            0x7a => { self.nop(); } // unofficial
-            0x7b => { let mode = MemoryAddressingMode::absolute_y(self); self.rra(mode); }, // unofficial
-            0x7c => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_with_read(mode); }, // unofficial
-            0x7d => { let mode = MemoryAddressingMode::absolute_x(self); self.adc(mode); },
-            0x7e => { let mode = MemoryAddressingMode::absolute_x(self); self.ror(mode); },
-            0x7f => { let mode = MemoryAddressingMode::absolute_x(self); self.rra(mode); }, // unofficial
-            0x80 => { let mode = ImmediateAddressingMode; self.nop_with_read(mode); }, // unofficial
-            0x81 => { let mode = MemoryAddressingMode::indirect_x(self); self.sta(mode); },
-            0x83 => { let mode = MemoryAddressingMode::indirect_x(self); self.sax(mode); }, // unofficial
-            0x84 => { let mode = MemoryAddressingMode::zero_page(self); self.sty(mode); },
-            0x85 => { let mode = MemoryAddressingMode::zero_page(self); self.sta(mode); },
-            0x86 => { let mode = MemoryAddressingMode::zero_page(self); self.stx(mode); },
-            0x87 => { let mode = MemoryAddressingMode::zero_page(self); self.sax(mode); }, // unofficial
-            0x88 => { self.dey(); },
-            0x8a => { self.txa(); },
-            0x8c => { let mode = MemoryAddressingMode::absolute(self); self.sty(mode); },
-            0x8d => { let mode = MemoryAddressingMode::absolute(self); self.sta(mode); },
-            0x8e => { let mode = MemoryAddressingMode::absolute(self); self.stx(mode); },
-            0x8f => { let mode = MemoryAddressingMode::absolute(self); self.sax(mode); }, // unofficial
-            0x90 => { self.bcc(); },
-            0x91 => { let mode = MemoryAddressingMode::indirect_y(self); self.sta(mode); },
-            0x94 => { let mode = MemoryAddressingMode::zero_page_x(self); self.sty(mode); },
-            0x95 => { let mode = MemoryAddressingMode::zero_page_x(self); self.sta(mode); },
-            0x96 => { let mode = MemoryAddressingMode::zero_page_y(self); self.stx(mode); },
-            0x97 => { let mode = MemoryAddressingMode::zero_page_y(self); self.sax(mode); }, // unofficial
-            0x98 => { self.tya(); },
-            0x99 => { let mode = MemoryAddressingMode::absolute_y(self); self.sta(mode); },
-            0x9a => { self.txs(); },
-            0x9d => { let mode = MemoryAddressingMode::absolute_x(self); self.sta(mode); },
-            0xa0 => { let mode = ImmediateAddressingMode; self.ldy(mode); },
-            0xa1 => { let mode = MemoryAddressingMode::indirect_x(self); self.lda(mode); },
-            0xa2 => { let mode = ImmediateAddressingMode; self.ldx(mode); },
-            0xa3 => { let mode = MemoryAddressingMode::indirect_x(self); self.lax(mode); }, // unofficial
-            0xa4 => { let mode = MemoryAddressingMode::zero_page(self); self.ldy(mode); },
-            0xa5 => { let mode = MemoryAddressingMode::zero_page(self); self.lda(mode); },
-            0xa6 => { let mode = MemoryAddressingMode::zero_page(self); self.ldx(mode); },
-            0xa7 => { let mode = MemoryAddressingMode::zero_page(self); self.lax(mode); }, // unofficial
-            0xa8 => { self.tay(); },
-            0xa9 => { let mode = ImmediateAddressingMode; self.lda(mode); },
-            0xaa => { self.tax(); },
-            0xac => { let mode = MemoryAddressingMode::absolute(self); self.ldy(mode); },
-            0xad => { let mode = MemoryAddressingMode::absolute(self); self.lda(mode); },
-            0xae => { let mode = MemoryAddressingMode::absolute(self); self.ldx(mode); },
-            0xaf => { let mode = MemoryAddressingMode::absolute(self); self.lax(mode); }, // unofficial
-            0xb0 => { self.bcs(); },
-            0xb1 => { let mode = MemoryAddressingMode::indirect_y(self); self.lda(mode); },
-            0xb3 => { let mode = MemoryAddressingMode::indirect_y(self); self.lax(mode); }, // unofficial
-            0xb4 => { let mode = MemoryAddressingMode::zero_page_x(self); self.ldy(mode); },
-            0xb5 => { let mode = MemoryAddressingMode::zero_page_x(self); self.lda(mode); },
-            0xb6 => { let mode = MemoryAddressingMode::zero_page_y(self); self.ldx(mode); },
-            0xb7 => { let mode = MemoryAddressingMode::zero_page_y(self); self.lax(mode); }, // unofficial
-            0xb8 => { self.clv(); },
-            0xb9 => { let mode = MemoryAddressingMode::absolute_y(self); self.lda(mode); },
-            0xba => { self.tsx(); },
-            0xbc => { let mode = MemoryAddressingMode::absolute_x(self); self.ldy(mode); },
-            0xbd => { let mode = MemoryAddressingMode::absolute_x(self); self.lda(mode); },
-            0xbe => { let mode = MemoryAddressingMode::absolute_y(self); self.ldx(mode); },
-            0xbf => { let mode = MemoryAddressingMode::absolute_y(self); self.lax(mode); }, // unofficial
-            0xc0 => { let mode = ImmediateAddressingMode; self.cpy(mode); },
-            0xc1 => { let mode = MemoryAddressingMode::indirect_x(self); self.cmp(mode); },
-            0xc3 => { let mode = MemoryAddressingMode::indirect_x(self); self.dcp(mode); }, // unofficial
-            0xc4 => { let mode = MemoryAddressingMode::zero_page(self); self.cpy(mode); },
-            0xc5 => { let mode = MemoryAddressingMode::zero_page(self); self.cmp(mode); },
-            0xc6 => { let mode = MemoryAddressingMode::zero_page(self); self.dec(mode); },
-            0xc7 => { let mode = MemoryAddressingMode::zero_page(self); self.dcp(mode); }, // unofficial
-            0xc8 => { self.iny(); },
-            0xc9 => { let mode = ImmediateAddressingMode; self.cmp(mode); },
-            0xca => { self.dex(); },
-            0xcc => { let mode = MemoryAddressingMode::absolute(self); self.cpy(mode); },
-            0xcd => { let mode = MemoryAddressingMode::absolute(self); self.cmp(mode); },
-            0xce => { let mode = MemoryAddressingMode::absolute(self); self.dec(mode); },
-            0xcf => { let mode = MemoryAddressingMode::absolute(self); self.dcp(mode); }, // unofficial
-            0xd0 => { self.bne(); },
-            0xd1 => { let mode = MemoryAddressingMode::indirect_y(self); self.cmp(mode); },
-            0xd3 => { let mode = MemoryAddressingMode::indirect_y(self); self.dcp(mode); }, // unofficial
-            0xd4 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_with_read(mode); }, // unofficial
-            0xd5 => { let mode = MemoryAddressingMode::zero_page_x(self); self.cmp(mode); },
-            0xd6 => { let mode = MemoryAddressingMode::zero_page_x(self); self.dec(mode); },
-            0xd7 => { let mode = MemoryAddressingMode::zero_page_x(self); self.dcp(mode); }, // unofficial
-            0xd8 => { self.cld(); },
-            0xd9 => { let mode = MemoryAddressingMode::absolute_y(self); self.cmp(mode); },
-            0xda => { self.nop(); } // unofficial
-            0xdb => { let mode = MemoryAddressingMode::absolute_y(self); self.dcp(mode); }, // unofficial
-            0xdc => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_with_read(mode); }, // unofficial
-            0xdd => { let mode = MemoryAddressingMode::absolute_x(self); self.cmp(mode); },
-            0xde => { let mode = MemoryAddressingMode::absolute_x(self); self.dec(mode); },
-            0xdf => { let mode = MemoryAddressingMode::absolute_x(self); self.dcp(mode); }, // unofficial
-            0xe0 => { let mode = ImmediateAddressingMode; self.cpx(mode); },
-            0xe1 => { let mode = MemoryAddressingMode::indirect_x(self); self.sbc(mode); },
-            0xe3 => { let mode = MemoryAddressingMode::indirect_x(self); self.isc(mode); }, // unofficial
-            0xe4 => { let mode = MemoryAddressingMode::zero_page(self); self.cpx(mode); },
-            0xe5 => { let mode = MemoryAddressingMode::zero_page(self); self.sbc(mode); },
-            0xe6 => { let mode = MemoryAddressingMode::zero_page(self); self.inc(mode); },
-            0xe7 => { let mode = MemoryAddressingMode::zero_page(self); self.isc(mode); }, // unofficial
-            0xe8 => { self.inx(); },
-            0xe9 => { let mode = ImmediateAddressingMode; self.sbc(mode); },
-            0xea => { self.nop(); },
-            0xeb => { let mode = ImmediateAddressingMode; self.sbc(mode); }, // unofficial
-            0xec => { let mode = MemoryAddressingMode::absolute(self); self.cpx(mode); },
-            0xed => { let mode = MemoryAddressingMode::absolute(self); self.sbc(mode); },
-            0xee => { let mode = MemoryAddressingMode::absolute(self); self.inc(mode); },
-            0xef => { let mode = MemoryAddressingMode::absolute(self); self.isc(mode); }, // unofficial
-            0xf0 => { self.beq(); },
-            0xf1 => { let mode = MemoryAddressingMode::indirect_y(self); self.sbc(mode); },
-            0xf3 => { let mode = MemoryAddressingMode::indirect_y(self); self.isc(mode); }, // unofficial
-            0xf4 => { let mode = MemoryAddressingMode::indirect_x(self); self.nop_with_read(mode); }, // unofficial
-            0xf5 => { let mode = MemoryAddressingMode::zero_page_x(self); self.sbc(mode); },
-            0xf6 => { let mode = MemoryAddressingMode::zero_page_x(self); self.inc(mode); },
-            0xf7 => { let mode = MemoryAddressingMode::zero_page_x(self); self.isc(mode); }, // unofficial
-            0xf8 => { self.sed(); },
-            0xf9 => { let mode = MemoryAddressingMode::absolute_y(self); self.sbc(mode); },
-            0xfa => { self.nop(); } // unofficial
-            0xfb => { let mode = MemoryAddressingMode::absolute_y(self); self.isc(mode); }, // unofficial
-            0xfc => { let mode = MemoryAddressingMode::absolute_x(self); self.nop_with_read(mode); }, // unofficial
-            0xfd => { let mode = MemoryAddressingMode::absolute_x(self); self.sbc(mode); },
-            0xfe => { let mode = MemoryAddressingMode::absolute_x(self); self.inc(mode); },
-            0xff => { let mode = MemoryAddressingMode::absolute_x(self); self.isc(mode); }, // unofficial
+            0x00 => { instruction!(brk, 7); }
+            0x01 => { instruction!(ora, addressing_mode::indirect_x, 6); },
+            0x03 => { instruction!(slo, addressing_mode::indirect_x, 8); }, // unofficial
+            0x04 => { instruction!(nop_with_read, addressing_mode::immediate, 3); }, // unofficial
+            0x05 => { instruction!(ora, addressing_mode::zero_page, 3); },
+            0x06 => { instruction!(asl, addressing_mode::zero_page, 5); },
+            0x07 => { instruction!(slo, addressing_mode::zero_page, 5); }, // unofficial
+            0x08 => { instruction!(php, 3); },
+            0x09 => { instruction!(ora, addressing_mode::immediate, 2); },
+            0x0a => { instruction!(asl, addressing_mode::accumulator, 2); },
+            0x0c => { instruction!(nop_with_read, addressing_mode::absolute, 4); }, // unofficial
+            0x0d => { instruction!(ora, addressing_mode::absolute, 4); },
+            0x0e => { instruction!(asl, addressing_mode::absolute, 6); },
+            0x0f => { instruction!(slo, addressing_mode::absolute, 6); }, // unofficial
+            0x10 => { instruction!(bpl, 2); },
+            0x11 => { instruction!(ora, addressing_mode::indirect_y, 5); },
+            0x13 => { instruction!(slo, addressing_mode::indirect_y, 8); }, // unofficial
+            0x14 => { instruction!(nop_with_read, addressing_mode::indirect_x, 4); }, // unofficial
+            0x15 => { instruction!(ora, addressing_mode::zero_page_x, 4); },
+            0x16 => { instruction!(asl, addressing_mode::zero_page_x, 6); },
+            0x17 => { instruction!(slo, addressing_mode::zero_page_x, 6); }, // unofficial
+            0x18 => { instruction!(clc, 2); },
+            0x19 => { instruction!(ora, addressing_mode::absolute_y, 4); },
+            0x1a => { instruction!(nop, 2); } // unofficial
+            0x1b => { instruction!(slo, addressing_mode::absolute_y, 7); }, // unofficial
+            0x1c => { instruction!(nop_with_read, addressing_mode::absolute_x, 4); }, // unofficial
+            0x1d => { instruction!(ora, addressing_mode::absolute_x, 4); },
+            0x1e => { instruction!(asl, addressing_mode::absolute_x, 7); },
+            0x1f => { instruction!(slo, addressing_mode::absolute_x, 7); }, // unofficial
+            0x20 => { instruction!(jsr, 6); },
+            0x21 => { instruction!(and, addressing_mode::indirect_x, 6); },
+            0x23 => { instruction!(rla, addressing_mode::indirect_x, 8); }, // unofficial
+            0x24 => { instruction!(bit, addressing_mode::zero_page, 3); },
+            0x25 => { instruction!(and, addressing_mode::zero_page, 3); },
+            0x26 => { instruction!(rol, addressing_mode::zero_page, 5); },
+            0x27 => { instruction!(rla, addressing_mode::zero_page, 5); }, // unofficial
+            0x28 => { instruction!(plp, 4); },
+            0x29 => { instruction!(and, addressing_mode::immediate, 2); },
+            0x2a => { instruction!(rol, addressing_mode::accumulator, 2); },
+            0x2c => { instruction!(bit, addressing_mode::absolute, 4); },
+            0x2d => { instruction!(and, addressing_mode::absolute, 4); },
+            0x2e => { instruction!(rol, addressing_mode::absolute, 6); },
+            0x2f => { instruction!(rla, addressing_mode::absolute, 6); }, // unofficial
+            0x30 => { instruction!(bmi, 2); },
+            0x31 => { instruction!(and, addressing_mode::indirect_y, 5); },
+            0x33 => { instruction!(rla, addressing_mode::indirect_y, 8); }, // unofficial
+            0x34 => { instruction!(nop_with_read, addressing_mode::indirect_x, 4); }, // unofficial
+            0x35 => { instruction!(and, addressing_mode::zero_page_x, 4); },
+            0x36 => { instruction!(rol, addressing_mode::zero_page_x, 6); },
+            0x37 => { instruction!(rla, addressing_mode::zero_page_x, 6); }, // unofficial
+            0x38 => { instruction!(sec, 2); },
+            0x39 => { instruction!(and, addressing_mode::absolute_y, 4); },
+            0x3a => { instruction!(nop, 2); } // unofficial
+            0x3b => { instruction!(rla, addressing_mode::absolute_y, 7); }, // unofficial
+            0x3c => { instruction!(nop_with_read, addressing_mode::absolute_x, 4); }, // unofficial
+            0x3d => { instruction!(and, addressing_mode::absolute_x, 4); },
+            0x3e => { instruction!(rol, addressing_mode::absolute_x, 7); },
+            0x3f => { instruction!(rla, addressing_mode::absolute_x, 7); }, // unofficial
+            0x40 => { instruction!(rti, 6); },
+            0x41 => { instruction!(eor, addressing_mode::indirect_x, 6); },
+            0x43 => { instruction!(sre, addressing_mode::indirect_x, 8); }, // unofficial
+            0x44 => { instruction!(nop_with_read, addressing_mode::immediate, 3); }, // unofficial
+            0x45 => { instruction!(eor, addressing_mode::zero_page, 3); },
+            0x46 => { instruction!(lsr, addressing_mode::zero_page, 5); },
+            0x47 => { instruction!(sre, addressing_mode::zero_page, 5); }, // unofficial
+            0x48 => { instruction!(pha, 3); },
+            0x49 => { instruction!(eor, addressing_mode::immediate, 2); },
+            0x4a => { instruction!(lsr, addressing_mode::accumulator, 2); },
+            0x4c => { instruction!(jmp, 3); },
+            0x4d => { instruction!(eor, addressing_mode::absolute, 4); },
+            0x4e => { instruction!(lsr, addressing_mode::absolute, 6); },
+            0x4f => { instruction!(sre, addressing_mode::absolute, 6); }, // unofficial
+            0x50 => { instruction!(bvc, 2); },
+            0x51 => { instruction!(eor, addressing_mode::indirect_y, 5); },
+            0x53 => { instruction!(sre, addressing_mode::indirect_y, 8); }, // unofficial
+            0x54 => { instruction!(nop_with_read, addressing_mode::indirect_x, 4); }, // unofficial
+            0x55 => { instruction!(eor, addressing_mode::zero_page_x, 4); },
+            0x56 => { instruction!(lsr, addressing_mode::zero_page_x, 6); },
+            0x57 => { instruction!(sre, addressing_mode::zero_page_x, 6); }, // unofficial
+            0x58 => { instruction!(cli, 2); },
+            0x59 => { instruction!(eor, addressing_mode::absolute_y, 4); },
+            0x5a => { instruction!(nop, 2); } // unofficial
+            0x5b => { instruction!(sre, addressing_mode::absolute_y, 7); }, // unofficial
+            0x5c => { instruction!(nop_with_read, addressing_mode::absolute_x, 4); }, // unofficial
+            0x5d => { instruction!(eor, addressing_mode::absolute_x, 4); },
+            0x5e => { instruction!(lsr, addressing_mode::absolute_x, 7); },
+            0x5f => { instruction!(sre, addressing_mode::absolute_x, 7); }, // unofficial
+            0x60 => { instruction!(rts, 6); },
+            0x61 => { instruction!(adc, addressing_mode::indirect_x, 6); },
+            0x63 => { instruction!(rra, addressing_mode::indirect_x, 8); }, // unofficial
+            0x64 => { instruction!(nop_with_read, addressing_mode::immediate, 3); }, // unofficial
+            0x65 => { instruction!(adc, addressing_mode::zero_page, 3); },
+            0x66 => { instruction!(ror, addressing_mode::zero_page, 5); },
+            0x67 => { instruction!(rra, addressing_mode::zero_page, 5); }, // unofficial
+            0x68 => { instruction!(pla, 4); },
+            0x69 => { instruction!(adc, addressing_mode::immediate, 2); },
+            0x6a => { instruction!(ror, addressing_mode::accumulator, 2); },
+            0x6c => { instruction!(jmp_indirect, 5); },
+            0x6d => { instruction!(adc, addressing_mode::absolute, 4); },
+            0x6e => { instruction!(ror, addressing_mode::absolute, 6); },
+            0x6f => { instruction!(rra, addressing_mode::absolute, 6); }, // unofficial
+            0x70 => { instruction!(bvs, 2); },
+            0x71 => { instruction!(adc, addressing_mode::indirect_y, 5); },
+            0x73 => { instruction!(rra, addressing_mode::indirect_y, 8); }, // unofficial
+            0x74 => { instruction!(nop_with_read, addressing_mode::indirect_x, 4); }, // unofficial
+            0x75 => { instruction!(adc, addressing_mode::zero_page_x, 4); },
+            0x76 => { instruction!(ror, addressing_mode::zero_page_x, 6); },
+            0x77 => { instruction!(rra, addressing_mode::zero_page_x, 6); }, // unofficial
+            0x78 => { instruction!(sei, 2); },
+            0x79 => { instruction!(adc, addressing_mode::absolute_y, 4); },
+            0x7a => { instruction!(nop, 2); } // unofficial
+            0x7b => { instruction!(rra, addressing_mode::absolute_y, 7); }, // unofficial
+            0x7c => { instruction!(nop_with_read, addressing_mode::absolute_x, 4); }, // unofficial
+            0x7d => { instruction!(adc, addressing_mode::absolute_x, 4); },
+            0x7e => { instruction!(ror, addressing_mode::absolute_x, 7); },
+            0x7f => { instruction!(rra, addressing_mode::absolute_x, 7); }, // unofficial
+            0x80 => { instruction!(nop_with_read, addressing_mode::immediate, 2); }, // unofficial
+            0x81 => { instruction!(sta, addressing_mode::indirect_x, 6); },
+            0x83 => { instruction!(sax, addressing_mode::indirect_x, 6); }, // unofficial
+            0x84 => { instruction!(sty, addressing_mode::zero_page, 3); },
+            0x85 => { instruction!(sta, addressing_mode::zero_page, 3); },
+            0x86 => { instruction!(stx, addressing_mode::zero_page, 3); },
+            0x87 => { instruction!(sax, addressing_mode::zero_page, 3); }, // unofficial
+            0x88 => { instruction!(dey, 2); },
+            0x8a => { instruction!(txa, 2); },
+            0x8c => { instruction!(sty, addressing_mode::absolute ,4); },
+            0x8d => { instruction!(sta, addressing_mode::absolute, 4); },
+            0x8e => { instruction!(stx, addressing_mode::absolute, 4); },
+            0x8f => { instruction!(sax, addressing_mode::absolute, 4); }, // unofficial
+            0x90 => { instruction!(bcc, 2); },
+            0x91 => { instruction!(sta, addressing_mode::indirect_y, 6); },
+            0x94 => { instruction!(sty, addressing_mode::zero_page_x, 4); },
+            0x95 => { instruction!(sta, addressing_mode::zero_page_x, 4); },
+            0x96 => { instruction!(stx, addressing_mode::zero_page_y, 4); },
+            0x97 => { instruction!(sax, addressing_mode::zero_page_y, 4); }, // unofficial
+            0x98 => { instruction!(tya, 2); },
+            0x99 => { instruction!(sta, addressing_mode::absolute_y, 5); },
+            0x9a => { instruction!(txs, 2); },
+            0x9d => { instruction!(sta, addressing_mode::absolute_x, 5); },
+            0xa0 => { instruction!(ldy, addressing_mode::immediate, 2); },
+            0xa1 => { instruction!(lda, addressing_mode::indirect_x, 6); },
+            0xa2 => { instruction!(ldx, addressing_mode::immediate, 2); },
+            0xa3 => { instruction!(lax, addressing_mode::indirect_x, 6); }, // unofficial
+            0xa4 => { instruction!(ldy, addressing_mode::zero_page, 3); },
+            0xa5 => { instruction!(lda, addressing_mode::zero_page, 3); },
+            0xa6 => { instruction!(ldx, addressing_mode::zero_page, 3); },
+            0xa7 => { instruction!(lax, addressing_mode::zero_page, 3); }, // unofficial
+            0xa8 => { instruction!(tay, 2); },
+            0xa9 => { instruction!(lda, addressing_mode::immediate, 2); },
+            0xaa => { instruction!(tax, 2); },
+            0xac => { instruction!(ldy, addressing_mode::absolute, 4); },
+            0xad => { instruction!(lda, addressing_mode::absolute, 4); },
+            0xae => { instruction!(ldx, addressing_mode::absolute, 4); },
+            0xaf => { instruction!(lax, addressing_mode::absolute, 4); }, // unofficial
+            0xb0 => { instruction!(bcs, 2); },
+            0xb1 => { instruction!(lda, addressing_mode::indirect_y, 5); },
+            0xb3 => { instruction!(lax, addressing_mode::indirect_y, 5); }, // unofficial
+            0xb4 => { instruction!(ldy, addressing_mode::zero_page_x, 4); },
+            0xb5 => { instruction!(lda, addressing_mode::zero_page_x, 4); },
+            0xb6 => { instruction!(ldx, addressing_mode::zero_page_y, 4); },
+            0xb7 => { instruction!(lax, addressing_mode::zero_page_y, 4); }, // unofficial
+            0xb8 => { instruction!(clv, 2); },
+            0xb9 => { instruction!(lda, addressing_mode::absolute_y, 4); },
+            0xba => { instruction!(tsx, 2); },
+            0xbc => { instruction!(ldy, addressing_mode::absolute_x, 4); },
+            0xbd => { instruction!(lda, addressing_mode::absolute_x, 4); },
+            0xbe => { instruction!(ldx, addressing_mode::absolute_y, 4); },
+            0xbf => { instruction!(lax, addressing_mode::absolute_y, 4); }, // unofficial
+            0xc0 => { instruction!(cpy, addressing_mode::immediate, 2); },
+            0xc1 => { instruction!(cmp, addressing_mode::indirect_x, 6); },
+            0xc3 => { instruction!(dcp, addressing_mode::indirect_x, 8); }, // unofficial
+            0xc4 => { instruction!(cpy, addressing_mode::zero_page, 3); },
+            0xc5 => { instruction!(cmp, addressing_mode::zero_page, 3); },
+            0xc6 => { instruction!(dec, addressing_mode::zero_page, 5); },
+            0xc7 => { instruction!(dcp, addressing_mode::zero_page, 5); }, // unofficial
+            0xc8 => { instruction!(iny, 2); },
+            0xc9 => { instruction!(cmp, addressing_mode::immediate, 2); },
+            0xca => { instruction!(dex, 2); },
+            0xcc => { instruction!(cpy, addressing_mode::absolute, 4); },
+            0xcd => { instruction!(cmp, addressing_mode::absolute, 4); },
+            0xce => { instruction!(dec, addressing_mode::absolute, 6); },
+            0xcf => { instruction!(dcp, addressing_mode::absolute, 6); }, // unofficial
+            0xd0 => { instruction!(bne, 2); },
+            0xd1 => { instruction!(cmp, addressing_mode::indirect_y, 5); },
+            0xd3 => { instruction!(dcp, addressing_mode::indirect_y, 8); }, // unofficial
+            0xd4 => { instruction!(nop_with_read, addressing_mode::indirect_x, 4); }, // unofficial
+            0xd5 => { instruction!(cmp, addressing_mode::zero_page_x, 4); },
+            0xd6 => { instruction!(dec, addressing_mode::zero_page_x, 6); },
+            0xd7 => { instruction!(dcp, addressing_mode::zero_page_x, 6); }, // unofficial
+            0xd8 => { instruction!(cld, 2); },
+            0xd9 => { instruction!(cmp, addressing_mode::absolute_y, 4); },
+            0xda => { instruction!(nop, 2); } // unofficial
+            0xdb => { instruction!(dcp, addressing_mode::absolute_y, 7); }, // unofficial
+            0xdc => { instruction!(nop_with_read, addressing_mode::absolute_x, 4); }, // unofficial
+            0xdd => { instruction!(cmp, addressing_mode::absolute_x, 4); },
+            0xde => { instruction!(dec, addressing_mode::absolute_x, 7); },
+            0xdf => { instruction!(dcp, addressing_mode::absolute_x, 7); }, // unofficial
+            0xe0 => { instruction!(cpx, addressing_mode::immediate, 2); },
+            0xe1 => { instruction!(sbc, addressing_mode::indirect_x, 6); },
+            0xe3 => { instruction!(isc, addressing_mode::indirect_x, 8); }, // unofficial
+            0xe4 => { instruction!(cpx, addressing_mode::zero_page, 3); },
+            0xe5 => { instruction!(sbc, addressing_mode::zero_page, 3); },
+            0xe6 => { instruction!(inc, addressing_mode::zero_page, 5); },
+            0xe7 => { instruction!(isc, addressing_mode::zero_page, 5); }, // unofficial
+            0xe8 => { instruction!(inx, 2); },
+            0xe9 => { instruction!(sbc, addressing_mode::immediate, 2); },
+            0xea => { instruction!(nop, 2); },
+            0xeb => { instruction!(sbc, addressing_mode::immediate, 2); }, // unofficial
+            0xec => { instruction!(cpx, addressing_mode::absolute, 4); },
+            0xed => { instruction!(sbc, addressing_mode::absolute, 4); },
+            0xee => { instruction!(inc, addressing_mode::absolute, 6); },
+            0xef => { instruction!(isc, addressing_mode::absolute, 6); }, // unofficial
+            0xf0 => { instruction!(beq, 2); },
+            0xf1 => { instruction!(sbc, addressing_mode::indirect_y, 5); },
+            0xf3 => { instruction!(isc, addressing_mode::indirect_y, 8); }, // unofficial
+            0xf4 => { instruction!(nop_with_read, addressing_mode::indirect_x, 4); }, // unofficial
+            0xf5 => { instruction!(sbc, addressing_mode::zero_page_x, 4); },
+            0xf6 => { instruction!(inc, addressing_mode::zero_page_x, 6); },
+            0xf7 => { instruction!(isc, addressing_mode::zero_page_x, 7); }, // unofficial
+            0xf8 => { instruction!(sed, 2); },
+            0xf9 => { instruction!(sbc, addressing_mode::absolute_y, 4); },
+            0xfa => { instruction!(nop, 2); } // unofficial
+            0xfb => { instruction!(isc, addressing_mode::absolute_y, 7); }, // unofficial
+            0xfc => { instruction!(nop_with_read, addressing_mode::absolute_x, 4); }, // unofficial
+            0xfd => { instruction!(sbc, addressing_mode::absolute_x, 4); },
+            0xfe => { instruction!(inc, addressing_mode::absolute_x, 7); },
+            0xff => { instruction!(isc, addressing_mode::absolute_x, 7); }, // unofficial
             _ => panic!("Unknown opcode: {:02X}", opcode)
         }
     }
@@ -471,6 +485,9 @@ impl Cpu {
     }
     fn clc(&mut self) {
         self.reg_p.carry = false;
+    }
+    fn cli(&mut self) {
+        self.reg_p.interrupt_disable = false;
     }
     fn bcc(&mut self) {
         let condition = !self.reg_p.carry;
