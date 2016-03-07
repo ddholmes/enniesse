@@ -27,7 +27,7 @@ pub struct Cpu {
     // status register
     pub reg_p: StatusRegister,
     
-    pub cycles: u64,
+    pub cycle: usize,
     
     pub memory_interface: MemoryInterface,
     
@@ -43,7 +43,7 @@ impl Cpu {
             reg_pc: 0xc000,
             reg_sp: 0xfd,
             reg_p: StatusRegister::from(0x24),
-            cycles: 0,
+            cycle: 0,
             memory_interface: MemoryInterface::new(rom),
             current_instruction: 0
         }
@@ -53,6 +53,30 @@ impl Cpu {
         // TODO: accurately model reset
         
         self.reg_pc = self.load_word(RESET_VECTOR);
+    }
+    
+    pub fn nmi(&mut self) {
+        let pc = self.reg_pc;
+        let flags = self.reg_p.as_u8();
+        
+        self.stack_push_word(pc);
+        self.stack_push_byte(flags);
+        
+        self.reg_pc = self.load_word(NMI_VECTOR);
+    }
+    
+    pub fn irq(&mut self) {
+        if self.reg_p.interrupt_disable {
+            return;
+        }
+        
+        let pc = self.reg_pc;
+        let flags = self.reg_p.as_u8();
+        
+        self.stack_push_word(pc);
+        self.stack_push_byte(flags);
+        
+        self.reg_pc = self.load_word(BRK_VECTOR);
     }
     
     pub fn run_instruction(&mut self) {
@@ -65,12 +89,12 @@ impl Cpu {
         macro_rules! instruction {
             ($i:ident, $c:expr) => {{
                 self.$i();
-                self.cycles += $c;
+                self.cycle += $c;
             }};
             ($i:ident, $am:path, $c: expr) => {{
                 let mode = $am(self);
                 self.$i(mode);
-                self.cycles += $c;
+                self.cycle += $c;
             }};
         }
         // instruction macro format: (instruction, addressingmode [optional])
@@ -327,17 +351,17 @@ impl Cpu {
         let end_addr = ((val as u16) << 8) | 0x00ff;
         
         // "1 dummy read cycle while waiting for writes to complete"
-        self.cycles += 1;
+        self.cycle += 1;
         // "+1 if on an odd CPU cycle"
-        if self.cycles % 2 == 1 {
-            self.cycles += 1;
+        if self.cycle % 2 == 1 {
+            self.cycle += 1;
         }
         
         for addr in start_addr .. end_addr {
             let val = self.load_byte(addr);
             self.store_byte(memory::PPU_OAM_DATA, val);
             
-            self.cycles += 2;
+            self.cycle += 2;
         }
     }
     
@@ -829,14 +853,15 @@ impl Memory for Cpu {
 
 impl fmt::Debug for Cpu {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:04X} {:20} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:",
+        write!(f, "{:04X} {:20} A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X} CYC:{}",
             self.reg_pc,
             opcode::decode(self.current_instruction),
             self.reg_a,
             self.reg_x,
             self.reg_y,
             self.reg_p.as_u8(),
-            self.reg_sp)
+            self.reg_sp,
+            self.cycle)
     }
 }
 

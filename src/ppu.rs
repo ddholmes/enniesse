@@ -25,6 +25,14 @@ const PALETTE_END: u16     = 0x3f1f;
 
 const PPU_RAM_SIZE: usize = 0x800;
 
+const CPU_CYCLES_PER_FRAME: u16 = 29781;
+const SCANLINES_PER_FRAME: u16 = 262;
+pub const CPU_CYCLES_PER_SCANLINE: u16 = CPU_CYCLES_PER_FRAME / SCANLINES_PER_FRAME;
+const PPU_CYCLES_PER_SCANLINE: u16 = 341;
+
+const VBLANK_SCANLINE_START: u16 = 241;
+const VBLANK_SCANLINE_END: u16 = 261;
+
 pub struct Ppu {
     reg_ctrl: CtrlRegister,
     reg_mask: MaskRegister,
@@ -32,6 +40,8 @@ pub struct Ppu {
     reg_oam_addr: u8,
     reg_scroll: ScrollRegister,
     reg_addr: AddressRegister,
+    
+    scanline: u16,
     
     vram: Vram,
     oam: Oam
@@ -47,17 +57,43 @@ impl Ppu {
             reg_scroll: ScrollRegister { x: 0, y: 0, write_next: ScrollDirection::X },
             reg_addr: AddressRegister { address: 0, write_next: AddressByte::Upper },
             
+            scanline: 0,
+            
             vram: Vram::new(mapper),
             oam: Oam::new()
         }
     }
     
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> PpuRunResult {
+        let mut result = PpuRunResult::default();
+            
+        // TODO: render stuff
         
+        self.scanline += 1;
+        
+        if self.scanline == VBLANK_SCANLINE_START {
+            self.reg_status.set_vblank(true);
+            if self.reg_ctrl.get_generate_nmi() {
+                result.vblank = true;
+            }
+        } else if self.scanline == VBLANK_SCANLINE_END {
+            self.scanline = 0;
+            self.reg_status.set_vblank(false);
+        }
+       
+        result
     }
     
     fn read_status(&mut self) -> u8 {
-        *self.reg_status
+        // reading status resets these address latches
+        self.reg_scroll.write_next = ScrollDirection::X;
+        self.reg_addr.write_next = AddressByte::Upper;
+        
+        let status = *self.reg_status;
+        // vblank is cleared after reading status
+        self.reg_status.set_vblank(false);
+        
+        status
     }
     
     fn read_oam_data(&mut self) -> u8 {
@@ -150,6 +186,12 @@ impl Memory for Ppu {
             _ => panic!("Unknown PPU register {:04X}", addr)
         }
     }
+}
+
+#[derive(Default)]
+pub struct PpuRunResult {
+    pub vblank: bool,
+    pub mapper_irq: bool
 }
 
 struct Vram {
@@ -299,6 +341,14 @@ impl CtrlRegister {
     
     fn get_generate_nmi(&self) -> bool {
         self.0 & 0b1000_0000 != 0
+    }
+    
+    fn set_generate_nmi(&mut self, val: bool) {
+        if val {
+            self.0 |= 0b1000_0000;
+        } else {
+            self.0 &= 0b0111_1111;
+        }
     }
 }
 

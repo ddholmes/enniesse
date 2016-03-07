@@ -80,6 +80,7 @@ pub fn decode(opcode: u8) -> &'static str {
         0x55 => { "eor" },
         0x56 => { "lsr" },
         0x57 => { "*sre" }, // unofficial
+        0x58 => { "cli" },
         0x59 => { "eor" },
         0x5a => { "nop" } // unofficial
         0x5b => { "*sre" }, // unofficial

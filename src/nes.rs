@@ -1,5 +1,6 @@
 use super::cpu::Cpu;
 use super::rom::Rom;
+use super::ppu;
 
 #[derive(Debug)]
 pub struct Nes {
@@ -21,7 +22,20 @@ impl Nes {
         loop {
             self.cpu.trace_state();
             self.cpu.run_instruction();
-            self.cpu.memory_interface.ppu.run();
+            
+            if self.cpu.cycle >= ppu::CPU_CYCLES_PER_SCANLINE as usize {
+                let result = self.cpu.memory_interface.ppu.run();
+                
+                if result.vblank {
+                    self.cpu.nmi();
+                }
+                
+                if result.mapper_irq {
+                    self.cpu.irq();
+                }
+                
+                self.cpu.cycle = self.cpu.cycle % ppu::CPU_CYCLES_PER_SCANLINE as usize;
+            }
         }
     }
 }
