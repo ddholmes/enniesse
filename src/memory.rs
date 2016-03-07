@@ -3,6 +3,7 @@ use super::mapper;
 use super::mapper::Mapper;
 use super::apu::Apu;
 use super::ppu::Ppu;
+use super::input::Input;
 
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -10,19 +11,19 @@ use std::cell::RefCell;
 // the 2k is mirrored between 4 2k blocks
 const RAM_SIZE: u16 = 2048;
 
-const RAM_START: u16         = 0x0000;
-const RAM_END: u16           = 0x1fff;
-const PPU_REG_START: u16     = 0x2000;
-pub const PPU_OAM_DATA: u16  = 0x2004;
-const PPU_REG_END: u16       = 0x3fff;
-const APU_REG_START: u16     = 0x4000;
-const APU_REG_END: u16       = 0x4013;
-pub const PPU_OAM_DMA: u16   = 0x4014;
-const APU_STATUS_REG: u16    = 0x4015;
-const IO_REG: u16            = 0x4016;
-const APU_IO_SHARED_REG: u16 = 0x4017;
-const CART_MAPPER_START: u16 = 0x4020;
-const CART_MAPPER_END: u16   = 0xffff;
+const RAM_START: u16             = 0x0000;
+const RAM_END: u16               = 0x1fff;
+const PPU_REG_START: u16         = 0x2000;
+pub const PPU_OAM_DATA: u16      = 0x2004;
+const PPU_REG_END: u16           = 0x3fff;
+const APU_REG_START: u16         = 0x4000;
+const APU_REG_END: u16           = 0x4013;
+pub const PPU_OAM_DMA: u16       = 0x4014;
+const APU_STATUS_REG: u16        = 0x4015;
+pub const IO_REG: u16            = 0x4016;
+pub const APU_IO_SHARED_REG: u16 = 0x4017;
+const CART_MAPPER_START: u16     = 0x4020;
+const CART_MAPPER_END: u16       = 0xffff;
 
 pub trait Memory { 
     fn load_byte(&mut self, addr: u16) -> u8;
@@ -44,7 +45,8 @@ pub struct MemoryInterface {
     pub ram: Ram,
     pub mapper: Rc<RefCell<Box<Mapper>>>,
     pub apu: Apu,
-    pub ppu: Ppu
+    pub ppu: Ppu,
+    pub input: Input
 }
 
 impl MemoryInterface {
@@ -58,7 +60,8 @@ impl MemoryInterface {
             ram: Ram::new(),
             mapper: shared_mapper,
             apu: Apu::new(),
-            ppu: ppu
+            ppu: ppu,
+            input: Input::new()
         }
     }
 }
@@ -70,8 +73,8 @@ impl Memory for MemoryInterface {
             PPU_REG_START ... PPU_REG_END => self.ppu.load_byte(addr),
             APU_REG_START ... APU_REG_END => self.apu.load_byte(addr),
             APU_STATUS_REG => self.apu.load_byte(addr),
-            IO_REG => panic!("IO not implemented"),
-            APU_IO_SHARED_REG => self.apu.load_byte(addr), // TODO: also map to io
+            IO_REG => self.input.load_byte(addr),
+            APU_IO_SHARED_REG => self.apu.load_byte(addr) | self.input.load_byte(addr),
             CART_MAPPER_START ... CART_MAPPER_END => self.mapper.borrow_mut().load_byte_prg(addr),
             _ => panic!("Address out of range: {:X}", addr)
         }
@@ -83,8 +86,11 @@ impl Memory for MemoryInterface {
             PPU_REG_START ... PPU_REG_END => self.ppu.store_byte(addr, val),
             APU_REG_START ... APU_REG_END => self.apu.store_byte(addr, val),
             APU_STATUS_REG => self.apu.store_byte(addr, val),
-            IO_REG => panic!("IO not implemented"),
-            APU_IO_SHARED_REG => self.apu.store_byte(addr, val), // TODO: also map to io
+            IO_REG => self.input.store_byte(addr, val),
+            APU_IO_SHARED_REG => {
+                self.apu.store_byte(addr, val);
+                self.input.store_byte(addr, val);
+            },
             CART_MAPPER_START ... CART_MAPPER_END => self.mapper.borrow_mut().store_byte_prg(addr, val),
             _ => panic!("Address out of range: {:X}", addr)
         }

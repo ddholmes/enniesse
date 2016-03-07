@@ -5,3 +5,4 @@ pub mod nes;
 pub mod rom;
 pub mod memory;
 mod mapper;
+mod input;
