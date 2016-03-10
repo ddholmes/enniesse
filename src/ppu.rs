@@ -33,6 +33,31 @@ const PPU_CYCLES_PER_SCANLINE: u16 = 341;
 const VBLANK_SCANLINE_START: u16 = 241;
 const VBLANK_SCANLINE_END: u16 = 261;
 
+pub const SCREEN_WIDTH: usize = 256;
+pub const SCREEN_HEIGHT: usize = 240;
+
+static RGB_PALETTE: [u8; 192] = [
+     84,  84,  84,    0,  30, 116,    8,  16, 144,   48,   0, 136,
+     68,   0, 100,   92,   0,  48,   84,   4,   0,   60,  24,   0,
+     32,  42,   0,    8,  58,   0,    0,  64,   0,    0,  60,   0,
+      0,  50,  60,    0,   0,   0,    0,   0,   0,    0,   0,   0,
+      
+    152, 150, 152,    8,  76, 196,   48,  50, 236,   92,  30, 228,
+    136,  20, 176,  160,  20, 100,  152,  34,  32,  120,  60,   0,
+     84,  90,   0,   40, 114,   0,    8, 124,   0,    0, 118,  40,
+      0, 102, 120,    0,   0,   0,    0,   0,   0,    0,   0,   0,
+      
+    236, 238, 236,   76, 154, 236,  120, 124, 236,  176,  98, 236,
+    228,  84, 236,  236,  88, 180,  236, 106, 100,  212, 136,  32,
+    160, 170,   0,  116, 196,   0,   76, 208,  32,   56, 204, 108,
+     56, 180, 204,   60,  60,  60,    0,   0,   0,    0,   0,   0,
+     
+    236, 238, 236,  168, 204, 236,  188, 188, 236,  212, 178, 236,
+    236, 174, 236,  236, 174, 212,  236, 180, 176,  228, 196, 144,
+    204, 210, 120,  180, 222, 120,  168, 226, 144,  152, 226, 180,
+    160, 214, 228,  160, 162, 160,    0,   0,   0,    0,   0,   0,
+];
+
 pub struct Ppu {
     reg_ctrl: CtrlRegister,
     reg_mask: MaskRegister,
@@ -68,6 +93,7 @@ impl Ppu {
         let mut result = PpuRunResult::default();
             
         // TODO: render stuff
+        self.render_scanline();
         
         self.scanline += 1;
         
@@ -83,6 +109,70 @@ impl Ppu {
        
         result
     }
+    
+    // rendering
+    
+    fn render_scanline(&mut self) {
+        let backdrop_index = self.vram.load_byte(PALETTE_START);
+        let backdrop_color = self.get_color_from_palette(backdrop_index as usize);
+        
+        let show_background_left = self.reg_mask.get_show_background_left();
+        let show_background = self.reg_mask.get_show_background();
+        let show_sprites_left = self.reg_mask.get_show_sprites_left();
+        let show_sprites = self.reg_mask.get_show_sprites();
+        
+        for x in 0 .. SCREEN_WIDTH {
+            // get the background color
+            if x < 8 && show_background_left || show_background {
+                
+            }
+            
+            // get sprite color
+            if x < 8 && show_sprites_left || show_sprites {
+                
+            }
+            
+            // determine what color to use based on priority
+            
+            // write the pixel to the screen buffer
+        }
+    }
+    
+    fn get_background_color(&mut self, x: u16, y: u16) -> Option<RgbColor> {
+        let base = self.reg_ctrl.get_base_nametable_address();
+        let x_index = (x / 8) % 32;
+        let y_index = (y / 8) % 30;
+        
+        // 32 8x8 sections per row
+        let nametable_entry = self.load_byte(base + x_index + 32 * y_index);
+        
+        // 8 32x32 sections per row (so 4 8pixel squares per section)
+        let attribute_byte = self.load_byte(base + 0x3c0 + (y_index / 4 * 8) + x_index / 4);
+        
+        // byte is divided into 4 sections, each 2 bits
+        let attribute_color = match (x_index % 4, y_index % 4) {
+            (0 ... 1, 0 ... 1) => attribute_byte >> 0 & 0b0011, // top left
+            (2 ... 3, 0 ... 1) => attribute_byte >> 2 & 0b0011, // top right
+            (0 ... 1, 2 ... 3) => attribute_byte >> 4 & 0b0011, // bottom left
+            (2 ... 3, 2 ... 3) => attribute_byte >> 6 & 0b0011, // bottom right
+            (_, _) => unreachable!()
+        };
+        
+        // fetch from pattern table
+        
+        None
+    }
+    
+    fn get_color_from_palette(&self, index: usize) -> RgbColor {
+        RgbColor {
+            r: RGB_PALETTE[index * 3],
+            g: RGB_PALETTE[index * 3 + 1],
+            b: RGB_PALETTE[index * 3 + 2]
+        }
+    }
+    
+    
+    // register read/writes
     
     fn read_status(&mut self) -> u8 {
         // reading status resets these address latches
@@ -146,6 +236,8 @@ impl Ppu {
             AddressByte::Lower => {
                 self.reg_addr.address = (self.reg_addr.address & 0xff00) | val as u16;
                 self.reg_addr.write_next = AddressByte::Upper;
+                
+                // TODO: this second write affects scrolling
             }
         }
     }
@@ -188,6 +280,13 @@ impl Memory for Ppu {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+struct RgbColor {
+    r: u8,
+    g: u8,
+    b: u8
+}
+
 #[derive(Default)]
 pub struct PpuRunResult {
     pub vblank: bool,
@@ -215,7 +314,14 @@ impl Memory for Vram {
         match addr {
             MAPPER_START ... MAPPER_END => self.mapper.borrow_mut().load_byte_chr(addr),
             NAMETABLE_START ... NAMETABLE_END => self.nametable[addr as usize & (PPU_RAM_SIZE - 1)],
-            PALETTE_START ... PALETTE_END => self.palette_index[addr as usize & 0x1f],
+            PALETTE_START ... PALETTE_END => {
+                // handle mirrored addresses
+                let mut addr = addr as usize & 0x1f;
+                if addr >= 0x10 && addr % 4 == 0 {
+                    addr -= 0x10;
+                }
+                self.palette_index[addr as usize & 0x1f]
+            },
             _ => panic!("Unknown PPU address {:04X}", addr)
         }
     }
@@ -223,7 +329,14 @@ impl Memory for Vram {
         match addr {
             MAPPER_START ... MAPPER_END => self.mapper.borrow_mut().store_byte_chr(addr, val),
             NAMETABLE_START ... NAMETABLE_END => self.nametable[addr as usize & (PPU_RAM_SIZE - 1)] = val,
-            PALETTE_START ... PALETTE_END => self.palette_index[addr as usize & 0x1f] = val,
+            PALETTE_START ... PALETTE_END => {
+                // handle mirrored addresses
+                let mut addr = addr as usize & 0x1f;
+                if addr >= 0x10 && addr % 4 == 0 {
+                    addr -= 0x10;
+                }
+                self.palette_index[addr as usize & 0x1f] = val
+            },
             _ => panic!("Unknown PPU address {:04X}", addr)
         }
     }
