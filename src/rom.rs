@@ -64,6 +64,8 @@ impl From<Box<[u8]>> for Rom {
         let mut rom_data = &value[prg_rom_end..chr_rom_end];
         rom_data.read_to_end(&mut chr_rom).unwrap();
         
+        println!("chr rom {:?}", chr_rom);
+        
         Rom {
             prg_rom_size: prg_rom_size,
             chr_rom_size: chr_rom_size,

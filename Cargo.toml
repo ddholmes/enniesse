@@ -5,6 +5,7 @@ authors = ["Dustin Holmes"]
 
 [dependencies]
 regex = "0.1.55"
+sdl2 = "0.16.0"
 
 [lib]
 name = "nesrs"

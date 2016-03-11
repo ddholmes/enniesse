@@ -69,7 +69,9 @@ pub struct Ppu {
     scanline: u16,
     
     vram: Vram,
-    oam: Oam
+    oam: Oam,
+    
+    pub display_buffer: Box<[u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3]>
 }
 
 impl Ppu {
@@ -85,7 +87,9 @@ impl Ppu {
             scanline: 0,
             
             vram: Vram::new(mapper),
-            oam: Oam::new()
+            oam: Oam::new(),
+            
+            display_buffer: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3])
         }
     }
     
@@ -93,7 +97,9 @@ impl Ppu {
         let mut result = PpuRunResult::default();
             
         // TODO: render stuff
-        self.render_scanline();
+        if self.scanline < SCREEN_HEIGHT as u16 {
+            self.render_scanline();
+        }
         
         self.scanline += 1;
         
@@ -105,6 +111,7 @@ impl Ppu {
         } else if self.scanline == VBLANK_SCANLINE_END {
             self.scanline = 0;
             self.reg_status.set_vblank(false);
+            result.render_frame = true;
         }
        
         result
@@ -121,10 +128,13 @@ impl Ppu {
         let show_sprites_left = self.reg_mask.get_show_sprites_left();
         let show_sprites = self.reg_mask.get_show_sprites();
         
+        let y = self.scanline;
+        
         for x in 0 .. SCREEN_WIDTH {
             // get the background color
+            let mut background_color = None;
             if x < 8 && show_background_left || show_background {
-                
+                background_color = self.get_background_color(x as u16, y);
             }
             
             // get sprite color
@@ -133,8 +143,13 @@ impl Ppu {
             }
             
             // determine what color to use based on priority
+            // TODO
+            let color = if let Some(color) = background_color { color } else { backdrop_color };
             
-            // write the pixel to the screen buffer
+            // write the pixel to the display buffer
+            self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 0] = color.r;
+            self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 1] = color.g;
+            self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 2] = color.b;
         }
     }
     
@@ -144,10 +159,11 @@ impl Ppu {
         let y_index = (y / 8) % 30;
         
         // 32 8x8 sections per row
-        let nametable_entry = self.load_byte(base + x_index + 32 * y_index);
+        let tile = self.vram.load_byte(base + x_index + 32 * y_index);
         
         // 8 32x32 sections per row (so 4 8pixel squares per section)
-        let attribute_byte = self.load_byte(base + 0x3c0 + (y_index / 4 * 8) + x_index / 4);
+        let attribute_addr = base + 0x3c0 + (y_index / 4 * 8) + x_index / 4;
+        let attribute_byte = self.vram.load_byte(attribute_addr);
         
         // byte is divided into 4 sections, each 2 bits
         let attribute_color = match (x_index % 4, y_index % 4) {
@@ -159,8 +175,37 @@ impl Ppu {
         };
         
         // fetch from pattern table
+        let tile_x = (x % 8) as u8;
+        let tile_y = (y % 8) as u8;
+        let mut pattern_offset = self.reg_ctrl.get_background_pattern_table_address();
+        pattern_offset += ((tile << 4) + tile_y) as u16;
         
-        None
+        //println!("pattern offset {:X}", pattern_offset);
+        
+        let plane0 = self.vram.load_byte(pattern_offset);
+        let plane1 = self.vram.load_byte(pattern_offset + 8);
+        
+        if plane0 != 0 || plane1 != 0 {
+            println!("plane 0: {}, plane 1: {}", plane0, plane1);
+        }
+        
+        let bit0 = (plane0 >> (7 - tile_x)) & 1;
+        let bit1 = (plane1 >> (7 - tile_x)) & 1;
+        
+        let pattern_color = (bit1 << 1) | bit0;
+        
+        let palette_index = (attribute_color << 2) | pattern_color;
+        let color_index = self.vram.load_byte(PALETTE_START + palette_index as u16);
+        
+        //println!("base: {:X}", base);
+        //println!("tile: {}", tile);
+        //println!("attr color: {}, pattern color: {}, palette index: {}", attribute_color, pattern_color, palette_index);
+        
+        if color_index == 0 {
+            return None;
+        }
+        
+        Some(self.get_color_from_palette(color_index as usize))
     }
     
     fn get_color_from_palette(&self, index: usize) -> RgbColor {
@@ -290,7 +335,8 @@ struct RgbColor {
 #[derive(Default)]
 pub struct PpuRunResult {
     pub vblank: bool,
-    pub mapper_irq: bool
+    pub mapper_irq: bool,
+    pub render_frame: bool
 }
 
 struct Vram {
@@ -327,8 +373,13 @@ impl Memory for Vram {
     }
     fn store_byte(&mut self, addr: u16, val: u8) {
         match addr {
-            MAPPER_START ... MAPPER_END => self.mapper.borrow_mut().store_byte_chr(addr, val),
-            NAMETABLE_START ... NAMETABLE_END => self.nametable[addr as usize & (PPU_RAM_SIZE - 1)] = val,
+            MAPPER_START ... MAPPER_END => {
+                self.mapper.borrow_mut().store_byte_chr(addr, val);
+            },
+            NAMETABLE_START ... NAMETABLE_END => {
+                //println!("nametable write {:X} {:X}", addr, val);
+                self.nametable[addr as usize & (PPU_RAM_SIZE - 1)] = val;
+            },
             PALETTE_START ... PALETTE_END => {
                 // handle mirrored addresses
                 let mut addr = addr as usize & 0x1f;
