@@ -1,5 +1,7 @@
 use memory::Memory;
 
+use sdl2::keyboard::Keycode;
+
 const CONTROLLER1_ADDR: u16 = 0x4016;
 const CONTROLLER2_ADDR: u16 = 0x4017;
 
@@ -15,13 +17,27 @@ impl Input {
             controller2: ControllerState::default()
         }
     }
+    
+    pub fn handle_input(&mut self, keycode: Keycode, pressed: bool) {
+        match keycode {
+            Keycode::Z      => self.controller1.a      = pressed,
+            Keycode::X      => self.controller1.b      = pressed,
+            Keycode::RShift => self.controller1.select = pressed,
+            Keycode::Return => self.controller1.start  = pressed,
+            Keycode::Up     => self.controller1.up     = pressed,
+            Keycode::Down   => self.controller1.down   = pressed,
+            Keycode::Left   => self.controller1.left   = pressed,
+            Keycode::Right  => self.controller1.right  = pressed,
+            _               => {}
+        }
+    }
 }
 
 impl Memory for Input {
     fn load_byte(&mut self, addr: u16) -> u8 {
         match addr {
-            CONTROLLER1_ADDR => self.controller1.get_button_state(), 
-            CONTROLLER2_ADDR => self.controller2.get_button_state(),
+            CONTROLLER1_ADDR => 0x40 | self.controller1.get_button_state(), 
+            CONTROLLER2_ADDR => 0x40 | self.controller2.get_button_state(),
             _ => 0
         }
     }

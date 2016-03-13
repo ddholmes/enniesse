@@ -55,6 +55,8 @@ impl Nes {
                         Event::Quit {..} | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
                             break 'main;
                         },
+                        Event::KeyDown { keycode: Some(keycode), .. } => self.cpu.memory_interface.input.handle_input(keycode, true),
+                        Event::KeyUp { keycode: Some(keycode), .. } => self.cpu.memory_interface.input.handle_input(keycode, false),
                         _ => {}
                     }
                 }
