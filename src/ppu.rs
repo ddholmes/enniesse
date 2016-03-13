@@ -170,6 +170,16 @@ impl Ppu {
                 self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 1] = color.g;
                 self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 2] = color.b;
             }
+            
+            // increment coarse X
+            if x % 8 == 0 {
+                if (self.current_vram_address & 0x001f) == 31 {
+                    self.current_vram_address &= !(0x001f);
+                    //self.current_vram_address ^= 0x0400;
+                } else {
+                    self.current_vram_address += 1;
+                }
+            }
         }
         
         if show_background || show_background_left || show_sprites || show_sprites_left {
@@ -215,14 +225,6 @@ impl Ppu {
             (_, _) => unreachable!()
         };
         
-        // increment coarse X
-        if (v & 0x001f) == 31 {
-            self.current_vram_address &= !(0x001f);
-            //self.current_vram_address ^= 0x0400;
-        } else {
-            self.current_vram_address += 1;
-        }
-        
         let pattern_address = self.reg_ctrl.get_background_pattern_table_address() as u16;
         let fineY = (self.current_vram_address >> 12) & 7;
         
@@ -233,7 +235,6 @@ impl Ppu {
         let bit0 = (plane0 >> (7 - x - self.fine_x)) & 1;
         let bit1 = (plane1 >> (7 - x - self.fine_x)) & 1; 
         
-        
         let pattern_color = (bit1 << 1) | bit0;
         
         let palette = (attribute_color << 2) | pattern_color;
@@ -242,9 +243,6 @@ impl Ppu {
         //println!("base: {:X}", base);
         //println!("tile: {}", tile);
         //println!("attr color: {}, pattern color: {}, palette index: {}", attribute_color, pattern_color, palette);
-                
-        
-        
         if color_index == 0 {
             return None;
         }
