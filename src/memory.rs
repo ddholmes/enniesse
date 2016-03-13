@@ -76,7 +76,7 @@ impl Memory for MemoryInterface {
             IO_REG => self.input.load_byte(addr),
             APU_IO_SHARED_REG => self.apu.load_byte(addr) | self.input.load_byte(addr),
             CART_MAPPER_START ... CART_MAPPER_END => self.mapper.borrow_mut().load_byte_prg(addr),
-            _ => panic!("Address out of range: {:X}", addr)
+            _ => panic!("Read address out of range: {:X}", addr)
         }
     }
     
@@ -92,7 +92,7 @@ impl Memory for MemoryInterface {
                 self.input.store_byte(addr, val);
             },
             CART_MAPPER_START ... CART_MAPPER_END => self.mapper.borrow_mut().store_byte_prg(addr, val),
-            _ => panic!("Address out of range: {:X}", addr)
+            _ => panic!("Write address out of range: {:X}", addr)
         }
     }
 }

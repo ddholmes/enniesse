@@ -44,6 +44,9 @@ impl Memory for Apu {
         match addr {
             PULSE1_START ... PULSE1_END => 0, // TODO: implement
             PULSE2_START ... PULSE2_END => 0, // TODO: implement
+            TRIANGLE_START ... TRIANGLE_END => 0, // TODO: implement
+            NOISE_START ... NOISE_END => 0, // TODO: implement
+            DMC_START ... DMC_END => 0, // TODO: implement
             STATUS => *self.reg_status,
             FRAME_COUNTER => *self.reg_frame_counter,
             _ => panic!("Unknown APU register {:04X}", addr)
@@ -53,6 +56,9 @@ impl Memory for Apu {
         match addr {
             PULSE1_START ... PULSE1_END => {}, // TODO: implement
             PULSE2_START ... PULSE2_END => {}, // TODO: implement
+            TRIANGLE_START ... TRIANGLE_END => {}, // TODO: implement
+            NOISE_START ... NOISE_END => {}, // TODO: implement
+            DMC_START ... DMC_END => {}, // TODO: implement
             STATUS => self.reg_status = StatusRegister(val),
             FRAME_COUNTER => self.reg_frame_counter = FrameCounterRegister(val),
             _ => panic!("Unknown APU register {:04X}", addr)

@@ -359,7 +359,7 @@ impl Cpu {
         
         for addr in start_addr .. end_addr {
             let val = self.load_byte(addr);
-            self.store_byte(memory::PPU_OAM_DATA, val);
+            self.memory_interface.store_byte(memory::PPU_OAM_DATA, val);
             
             self.cycle += 2;
         }

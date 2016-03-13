@@ -31,10 +31,10 @@ pub struct MemoryAddressingMode {
 }
 impl AddressingMode for MemoryAddressingMode {
     fn load(&self, cpu: &mut Cpu) -> u8 {
-        cpu.memory_interface.load_byte(self.address)
+        cpu.load_byte(self.address)
     }
     fn store(&self, cpu: &mut Cpu, value: u8) {
-        cpu.memory_interface.store_byte(self.address, value);
+        cpu.store_byte(self.address, value);
     }
 }
 
