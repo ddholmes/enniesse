@@ -66,6 +66,8 @@ pub struct Ppu {
     reg_scroll: ScrollRegister,
     reg_addr: u16,
     
+    data_read_buffer: u8,
+    
     current_vram_address: u16, // v
     temporary_vram_address: u16, // t
     fine_x: u8, // x
@@ -91,6 +93,8 @@ impl Ppu {
             reg_oam_addr: 0,            
             reg_scroll: ScrollRegister { x: 0, y: 0 },
             reg_addr: 0,
+            
+            data_read_buffer: 0,
             
             current_vram_address: 0,
             temporary_vram_address: 0,
@@ -280,7 +284,16 @@ impl Ppu {
     fn read_data(&mut self) -> u8 {
         let addr = self.current_vram_address;
         self.current_vram_address += self.reg_ctrl.get_vram_address_increment();
-        self.vram.load_byte(addr)
+        let data = self.vram.load_byte(addr);
+        
+        // reads before the palette are buffered
+        if addr < PALETTE_START {
+            let buffer = self.data_read_buffer;
+            self.data_read_buffer = data;
+            return buffer;
+        }
+        
+        data
     }
     
     fn write_ctrl(&mut self, val: u8) {
@@ -458,7 +471,7 @@ impl Memory for Vram {
                 self.mapper.borrow_mut().store_byte_chr(addr, val);
             },
             NAMETABLE_START ... NAMETABLE_END => {
-                //println!("nametable write {:04X} {:02X}", addr, val);
+                println!("nametable write {:04X} {:02X}", addr, val);
                 self.nametable[addr as usize & (PPU_RAM_SIZE - 1)] = val;
             },
             PALETTE_START ... PALETTE_END => {
