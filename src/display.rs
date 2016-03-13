@@ -25,7 +25,7 @@ impl<'a> Display<'a> {
                         
         let renderer = window.renderer().present_vsync().build().unwrap();
         
-        let texture = renderer.create_texture(PixelFormatEnum::RGB24, TextureAccess::Streaming,
+        let texture = renderer.create_texture(PixelFormatEnum::BGR24, TextureAccess::Streaming,
                         width, height).unwrap();
         
         Display {

@@ -19,9 +19,9 @@ const PPU_DATA: u16   = 0x2007 & 0x07;
 const MAPPER_START: u16    = 0x0000;
 const MAPPER_END: u16      = 0x1fff;
 const NAMETABLE_START: u16 = 0x2000;
-const NAMETABLE_END: u16   = 0x2fff;
+const NAMETABLE_END: u16   = 0x3eff;
 const PALETTE_START: u16   = 0x3f00;
-const PALETTE_END: u16     = 0x3f1f;
+const PALETTE_END: u16     = 0x3fff;
 
 const PPU_RAM_SIZE: usize = 0x800;
 
@@ -30,8 +30,8 @@ const SCANLINES_PER_FRAME: u16 = 262;
 pub const CPU_CYCLES_PER_SCANLINE: u16 = CPU_CYCLES_PER_FRAME / SCANLINES_PER_FRAME;
 const PPU_CYCLES_PER_SCANLINE: u16 = 341;
 
-const VBLANK_SCANLINE_START: u16 = 241;
-const VBLANK_SCANLINE_END: u16 = 261;
+const VBLANK_SCANLINE_START: i16 = 241;
+const VBLANK_SCANLINE_END: i16 = 260;
 
 pub const SCREEN_WIDTH: usize = 256;
 pub const SCREEN_HEIGHT: usize = 240;
@@ -64,9 +64,17 @@ pub struct Ppu {
     reg_status: StatusRegister,
     reg_oam_addr: u8,
     reg_scroll: ScrollRegister,
-    reg_addr: AddressRegister,
+    reg_addr: u16,
     
-    scanline: u16,
+    current_vram_address: u16, // v
+    temporary_vram_address: u16, // t
+    fine_x: u8, // x
+    write_toggle: AddressByte, // w
+    
+    shifter_low: u8,
+    shifter_high: u8,
+    
+    scanline: i16,
     
     vram: Vram,
     oam: Oam,
@@ -81,10 +89,18 @@ impl Ppu {
             reg_mask: MaskRegister(0),
             reg_status: StatusRegister(0),
             reg_oam_addr: 0,            
-            reg_scroll: ScrollRegister { x: 0, y: 0, write_next: ScrollDirection::X },
-            reg_addr: AddressRegister { address: 0, write_next: AddressByte::Upper },
+            reg_scroll: ScrollRegister { x: 0, y: 0 },
+            reg_addr: 0,
             
-            scanline: 0,
+            current_vram_address: 0,
+            temporary_vram_address: 0,
+            fine_x: 0,
+            write_toggle: AddressByte::Upper,
+            
+            shifter_low: 0,
+            shifter_high: 0,
+            
+            scanline: -1,
             
             vram: Vram::new(mapper),
             oam: Oam::new(),
@@ -97,22 +113,23 @@ impl Ppu {
         let mut result = PpuRunResult::default();
             
         // TODO: render stuff
-        if self.scanline < SCREEN_HEIGHT as u16 {
+        if self.scanline < SCREEN_HEIGHT as i16 {
             self.render_scanline();
         }
-        
-        self.scanline += 1;
         
         if self.scanline == VBLANK_SCANLINE_START {
             self.reg_status.set_vblank(true);
             if self.reg_ctrl.get_generate_nmi() {
                 result.vblank = true;
             }
-        } else if self.scanline == VBLANK_SCANLINE_END {
-            self.scanline = 0;
-            self.reg_status.set_vblank(false);
             result.render_frame = true;
+            //println!("[frame]");
+        } else if self.scanline == VBLANK_SCANLINE_END {
+            self.scanline = -1;
+            self.reg_status.set_vblank(false);
         }
+        
+        self.scanline += 1;
        
         result
     }
@@ -134,7 +151,8 @@ impl Ppu {
             // get the background color
             let mut background_color = None;
             if x < 8 && show_background_left || show_background {
-                background_color = self.get_background_color(x as u16, y);
+                //background_color = self.get_background_color(x as u16, y as u16);
+                background_color = self.get_background_pixel((x % 8) as u8);
             }
             
             // get sprite color
@@ -147,10 +165,91 @@ impl Ppu {
             let color = if let Some(color) = background_color { color } else { backdrop_color };
             
             // write the pixel to the display buffer
-            self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 0] = color.r;
-            self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 1] = color.g;
-            self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 2] = color.b;
+            if y >= 0 {
+                self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 0] = color.r;
+                self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 1] = color.g;
+                self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 2] = color.b;
+            }
         }
+        
+        if show_background || show_background_left || show_sprites || show_sprites_left {
+            // y increment
+            if (self.current_vram_address & 0x7000) != 0x7000 {
+                self.current_vram_address += 0x1000;
+            } else {
+                self.current_vram_address &= !0x7000;
+                let mut y = (self.current_vram_address & 0x03e0) >> 5;
+                
+                if y == 29 {
+                    y = 0;
+                    self.current_vram_address ^= 0x0800;
+                } else if y == 31 {
+                    y = 0;
+                } else {
+                    y += 1;
+                }
+                
+                self.current_vram_address = (self.current_vram_address & !0x03e0) | (y << 5);
+            }
+        }
+    }
+    
+    fn get_background_pixel(&mut self, x: u8) -> Option<RgbColor> {
+        let v = self.current_vram_address;
+        
+        let tile_index = self.vram.load_byte(NAMETABLE_START | (v & 0x0FFF)) as u16;
+        //println!("{:04X} {:02X}", NAMETABLE_START | (v & 0x0FFF), tile_index);
+        
+        let attribute_addr = 0x23c0 | (v & 0x0c00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07);
+        let attribute_byte = self.vram.load_byte(attribute_addr);
+        //println!("{:04X}, {:02X}", attribute_addr, attribute_byte);
+        
+        // do something with attribute_byte
+        let coarse_x = v & 0x1f;
+        let coarse_y = (v >> 5) & 0x1f;
+        let attribute_color = match (coarse_x % 4, coarse_y % 4) {
+            (0 ... 1, 0 ... 1) => attribute_byte >> 0 & 0b0011, // top left
+            (2 ... 3, 0 ... 1) => attribute_byte >> 2 & 0b0011, // top right
+            (0 ... 1, 2 ... 3) => attribute_byte >> 4 & 0b0011, // bottom left
+            (2 ... 3, 2 ... 3) => attribute_byte >> 6 & 0b0011, // bottom right
+            (_, _) => unreachable!()
+        };
+        
+        // increment coarse X
+        if (v & 0x001f) == 31 {
+            self.current_vram_address &= !(0x001f);
+            //self.current_vram_address ^= 0x0400;
+        } else {
+            self.current_vram_address += 1;
+        }
+        
+        let pattern_address = self.reg_ctrl.get_background_pattern_table_address() as u16;
+        let fineY = (self.current_vram_address >> 12) & 7;
+        
+        //println!("{:04X}", pattern_address | (tile_index << 4) | fineY);
+        let plane0 = self.vram.load_byte(pattern_address | (tile_index << 4) | fineY);
+        let plane1 = self.vram.load_byte(pattern_address | (tile_index << 4) | fineY | 8);
+        
+        let bit0 = (plane0 >> (7 - x - self.fine_x)) & 1;
+        let bit1 = (plane1 >> (7 - x - self.fine_x)) & 1; 
+        
+        
+        let pattern_color = (bit1 << 1) | bit0;
+        
+        let palette = (attribute_color << 2) | pattern_color;
+        let color_index = self.vram.load_byte(PALETTE_START + palette as u16);
+        
+        //println!("base: {:X}", base);
+        //println!("tile: {}", tile);
+        //println!("attr color: {}, pattern color: {}, palette index: {}", attribute_color, pattern_color, palette);
+                
+        
+        
+        if color_index == 0 {
+            return None;
+        }
+        
+        Some(self.get_color_from_palette(color_index as usize))
     }
     
     fn get_background_color(&mut self, x: u16, y: u16) -> Option<RgbColor> {
@@ -194,12 +293,12 @@ impl Ppu {
         
         let pattern_color = (bit1 << 1) | bit0;
         
-        let palette_index = (attribute_color << 2) | pattern_color;
-        let color_index = self.vram.load_byte(PALETTE_START + palette_index as u16);
+        let palette = (attribute_color << 2) | pattern_color;
+        let color_index = self.vram.load_byte(PALETTE_START + palette as u16);
         
         //println!("base: {:X}", base);
         //println!("tile: {}", tile);
-        //println!("attr color: {}, pattern color: {}, palette index: {}", attribute_color, pattern_color, palette_index);
+        //println!("attr color: {}, pattern color: {}, palette index: {}", attribute_color, pattern_color, palette);
         
         if color_index == 0 {
             return None;
@@ -220,9 +319,8 @@ impl Ppu {
     // register read/writes
     
     fn read_status(&mut self) -> u8 {
-        // reading status resets these address latches
-        self.reg_scroll.write_next = ScrollDirection::X;
-        self.reg_addr.write_next = AddressByte::Upper;
+        // reading status resets the write toggle
+        self.write_toggle = AddressByte::Upper;
         
         let status = *self.reg_status;
         // vblank is cleared after reading status
@@ -237,12 +335,16 @@ impl Ppu {
     }
     
     fn read_data(&mut self) -> u8 {
-        let addr = self.reg_addr.address;
+        let addr = self.current_vram_address;
+        self.current_vram_address += self.reg_ctrl.get_vram_address_increment();
         self.vram.load_byte(addr)
     }
     
     fn write_ctrl(&mut self, val: u8) {
         self.reg_ctrl = CtrlRegister(val);
+        
+        // the lower 2 bits of the ctrl value are put into bits 10 and 11 of t
+        self.temporary_vram_address &= ((val as u16 & 3) << 10) | 0x73ff;
     }
     
     fn write_mask(&mut self, val: u8) {
@@ -260,42 +362,68 @@ impl Ppu {
     }
     
     fn write_scroll(&mut self, val: u8) {
-        match self.reg_scroll.write_next {
-            ScrollDirection::X => {
+        match self.write_toggle {
+            AddressByte::Upper => {
                 self.reg_scroll.x = val;
-                self.reg_scroll.write_next = ScrollDirection::Y;
+                self.write_toggle = AddressByte::Lower;
+                
+                self.fine_x = val & 0b111;
+                self.temporary_vram_address &= (val as u16 >> 3) | 0xffe0;
             },
-            ScrollDirection::Y => {
+            AddressByte::Lower => {
                 self.reg_scroll.y = val;
-                self.reg_scroll.write_next = ScrollDirection::X;
+                self.write_toggle = AddressByte::Upper;
+                
+                let val = val as u16;
+                self.temporary_vram_address &= ((val & 0b1100_0000) << 2) | 0xfcff;
+                self.temporary_vram_address &= ((val & 0b0011_1000) << 2) | 0xff1f;
+                self.temporary_vram_address &= ((val & 0b0000_0111) << 12) | 0x0fff;
             }
         }
     }
     
     fn write_addr(&mut self, val: u8) {
-        match self.reg_addr.write_next {
+        match self.write_toggle {
             AddressByte::Upper => {
-                self.reg_addr.address = (self.reg_addr.address & 0x00ff) | (val as u16) << 8;
-                self.reg_addr.write_next = AddressByte::Lower;
+                self.reg_addr = (self.reg_addr & 0x00ff) | (val as u16) << 8;
+                self.write_toggle = AddressByte::Lower;
+                
+                self.temporary_vram_address = self.temporary_vram_address & 0xff | ((val as u16) << 8);
+                // bit 14 is cleared
+                if !self.reg_status.get_vblank() && self.reg_mask.get_show_background() || self.reg_mask.get_show_sprites() {
+                    self.temporary_vram_address &= !(1 << 13);
+                }
             },
             AddressByte::Lower => {
-                self.reg_addr.address = (self.reg_addr.address & 0xff00) | val as u16;
-                self.reg_addr.write_next = AddressByte::Upper;
+                self.reg_addr = (self.reg_addr & 0xff00) | val as u16;
+                self.write_toggle = AddressByte::Upper;
                 
-                // TODO: this second write affects scrolling
+                self.temporary_vram_address = self.temporary_vram_address & 0xff00 | val as u16;
+                self.current_vram_address = self.temporary_vram_address;
             }
         }
     }
     
     fn write_data(&mut self, val: u8) {
-        let addr = self.reg_addr.address;
+        let addr = self.current_vram_address;
         self.vram.store_byte(addr, val);
+        self.current_vram_address += self.reg_ctrl.get_vram_address_increment();
+    }
+    
+    fn trace_read(addr: u16) {
+        //println!("R: {:04X}", addr);
+    }
+    
+    fn trace_write(addr: u16, val: u8) {
+        //println!("W: {:04X} -> {:02X}", addr, val);
     }
 }
 
 // cpu memory interface to ppu registers
 impl Memory for Ppu {
     fn load_byte(&mut self, addr: u16) -> u8 {
+        Ppu::trace_read(addr);
+        
         // repeats every 8 bytes
         match addr & 0x07 {
             PPU_CTRL => 0, // write only
@@ -310,6 +438,8 @@ impl Memory for Ppu {
         }
     }
     fn store_byte(&mut self, addr: u16, val: u8) {
+        Ppu::trace_write(addr, val);
+        
         // repeats every 8 bytes
         match addr & 0x07 {
             PPU_CTRL => self.write_ctrl(val), 
@@ -342,7 +472,7 @@ pub struct PpuRunResult {
 struct Vram {
     mapper: Rc<RefCell<Box<Mapper>>>,
     nametable: [u8; PPU_RAM_SIZE], // 2kb ram
-    palette_index: [u8; 0x20]
+    palette: [u8; 0x20]
 }
 
 impl Vram {
@@ -350,13 +480,15 @@ impl Vram {
         Vram {
             mapper: mapper,
             nametable: [0; PPU_RAM_SIZE],
-            palette_index: [0; 0x20]
+            palette: [0; 0x20]
         }
     }
 }
 
 impl Memory for Vram {
     fn load_byte(&mut self, addr: u16) -> u8 {
+        Ppu::trace_read(addr);
+        
         match addr {
             MAPPER_START ... MAPPER_END => self.mapper.borrow_mut().load_byte_chr(addr),
             NAMETABLE_START ... NAMETABLE_END => self.nametable[addr as usize & (PPU_RAM_SIZE - 1)],
@@ -366,28 +498,38 @@ impl Memory for Vram {
                 if addr >= 0x10 && addr % 4 == 0 {
                     addr -= 0x10;
                 }
-                self.palette_index[addr as usize & 0x1f]
+                
+                self.palette[addr as usize & 0x1f]
             },
+            0x4000 ... 0x7fff => self.nametable[addr as usize & (PPU_RAM_SIZE - 1)],
             _ => panic!("Unknown PPU address {:04X}", addr)
         }
     }
     fn store_byte(&mut self, addr: u16, val: u8) {
+        Ppu::trace_write(addr, val);
+        
         match addr {
             MAPPER_START ... MAPPER_END => {
                 self.mapper.borrow_mut().store_byte_chr(addr, val);
             },
             NAMETABLE_START ... NAMETABLE_END => {
-                //println!("nametable write {:X} {:X}", addr, val);
+                //println!("nametable write {:04X} {:02X}", addr, val);
                 self.nametable[addr as usize & (PPU_RAM_SIZE - 1)] = val;
             },
             PALETTE_START ... PALETTE_END => {
+                //println!("palette write {:04X} {:02X}", addr, val);
                 // handle mirrored addresses
                 let mut addr = addr as usize & 0x1f;
                 if addr >= 0x10 && addr % 4 == 0 {
                     addr -= 0x10;
                 }
-                self.palette_index[addr as usize & 0x1f] = val
+                
+                self.palette[addr as usize & 0x1f] = val
             },
+            0x4000 ... 0x7fff => {
+                //println!("nametable write {:04X} {:02X}", addr, val);
+                self.nametable[addr as usize & (PPU_RAM_SIZE - 1)] = val;
+            }
             _ => panic!("Unknown PPU address {:04X}", addr)
         }
     }
@@ -483,7 +625,7 @@ impl CtrlRegister {
         if self.0 & 0b0000_0010 != 0 { 240 } else { 0 }
     }
     
-    fn get_vram_address_increment(&self) -> u8 {
+    fn get_vram_address_increment(&self) -> u16 {
         if self.0 & 0b0000_0100 != 0 { 32 } else { 1 }
     }
     
@@ -575,18 +717,7 @@ impl Deref for MaskRegister {
 
 struct ScrollRegister {
     x: u8,
-    y: u8,
-    write_next: ScrollDirection
-}
-
-enum ScrollDirection {
-    X,
-    Y
-}
-
-struct AddressRegister {
-    address: u16,
-    write_next: AddressByte
+    y: u8
 }
 
 enum AddressByte {
