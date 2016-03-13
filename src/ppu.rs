@@ -250,61 +250,6 @@ impl Ppu {
         Some(self.get_color_from_palette(color_index as usize))
     }
     
-    fn get_background_color(&mut self, x: u16, y: u16) -> Option<RgbColor> {
-        let base = self.reg_ctrl.get_base_nametable_address();
-        let x_index = (x / 8) % 32;
-        let y_index = (y / 8) % 30;
-        
-        // 32 8x8 sections per row
-        let tile = self.vram.load_byte(base + x_index + 32 * y_index);
-        
-        // 8 32x32 sections per row (so 4 8pixel squares per section)
-        let attribute_addr = base + 0x3c0 + (y_index / 4 * 8) + x_index / 4;
-        let attribute_byte = self.vram.load_byte(attribute_addr);
-        
-        // byte is divided into 4 sections, each 2 bits
-        let attribute_color = match (x_index % 4, y_index % 4) {
-            (0 ... 1, 0 ... 1) => attribute_byte >> 0 & 0b0011, // top left
-            (2 ... 3, 0 ... 1) => attribute_byte >> 2 & 0b0011, // top right
-            (0 ... 1, 2 ... 3) => attribute_byte >> 4 & 0b0011, // bottom left
-            (2 ... 3, 2 ... 3) => attribute_byte >> 6 & 0b0011, // bottom right
-            (_, _) => unreachable!()
-        };
-        
-        // fetch from pattern table
-        let tile_x = (x % 8) as u8;
-        let tile_y = (y % 8) as u8;
-        let mut pattern_offset = self.reg_ctrl.get_background_pattern_table_address();
-        pattern_offset += ((tile << 4) + tile_y) as u16;
-        
-        //println!("pattern offset {:X}", pattern_offset);
-        
-        let plane0 = self.vram.load_byte(pattern_offset);
-        let plane1 = self.vram.load_byte(pattern_offset + 8);
-        
-        if plane0 != 0 || plane1 != 0 {
-            println!("plane 0: {}, plane 1: {}", plane0, plane1);
-        }
-        
-        let bit0 = (plane0 >> (7 - tile_x)) & 1;
-        let bit1 = (plane1 >> (7 - tile_x)) & 1;
-        
-        let pattern_color = (bit1 << 1) | bit0;
-        
-        let palette = (attribute_color << 2) | pattern_color;
-        let color_index = self.vram.load_byte(PALETTE_START + palette as u16);
-        
-        //println!("base: {:X}", base);
-        //println!("tile: {}", tile);
-        //println!("attr color: {}, pattern color: {}, palette index: {}", attribute_color, pattern_color, palette);
-        
-        if color_index == 0 {
-            return None;
-        }
-        
-        Some(self.get_color_from_palette(color_index as usize))
-    }
-    
     fn get_color_from_palette(&self, index: usize) -> RgbColor {
         RgbColor {
             r: RGB_PALETTE[index * 3],
@@ -320,11 +265,11 @@ impl Ppu {
         // reading status resets the write toggle
         self.write_toggle = AddressByte::Upper;
         
-        let status = *self.reg_status;
+        let status = self.reg_status;
         // vblank is cleared after reading status
         self.reg_status.set_vblank(false);
         
-        status
+        *status
     }
     
     fn read_oam_data(&mut self) -> u8 {
@@ -387,8 +332,10 @@ impl Ppu {
                 self.write_toggle = AddressByte::Lower;
                 
                 self.temporary_vram_address = self.temporary_vram_address & 0xff | ((val as u16) << 8);
+                
                 // bit 14 is cleared
-                if !self.reg_status.get_vblank() && self.reg_mask.get_show_background() || self.reg_mask.get_show_sprites() {
+                if self.scanline < VBLANK_SCANLINE_START && self.scanline >= 0 
+                    && (self.reg_mask.get_show_background() || self.reg_mask.get_show_sprites()) {
                     self.temporary_vram_address &= !(1 << 13);
                 }
             },
@@ -554,6 +501,7 @@ impl Memory for Oam {
     }
 }
 
+#[derive(Copy, Clone)]
 struct StatusRegister(u8);
 
 impl StatusRegister {
@@ -602,6 +550,7 @@ impl Deref for StatusRegister {
     }
 }
 
+#[derive(Copy, Clone)]
 struct CtrlRegister(u8);
 
 impl CtrlRegister {
@@ -669,6 +618,7 @@ enum SpriteSize {
     Size8x16
 }
 
+#[derive(Copy, Clone)]
 struct MaskRegister(u8);
 
 impl MaskRegister {
