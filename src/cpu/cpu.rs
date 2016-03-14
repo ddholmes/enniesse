@@ -347,8 +347,8 @@ impl Cpu {
     }
     
     fn ppu_oam_dma(&mut self, val: u8) {
-        let start_addr = (val as u16) << 8;
-        let end_addr = ((val as u16) << 8) | 0x00ff;
+        let start_addr = val as u16 * 0x100;
+        let end_addr = start_addr + 256;
         
         // "1 dummy read cycle while waiting for writes to complete"
         self.cycle += 1;

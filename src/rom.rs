@@ -9,6 +9,10 @@ pub struct Rom {
     pub prg_rom_size: u8,
     // number of 8k pages
     pub chr_rom_size: u8,
+    
+    pub flags6: u8,
+    pub flags7: u8,
+    
     pub mapper: u8,
     
     pub prg_rom: Box<[u8]>,
@@ -67,6 +71,8 @@ impl From<Box<[u8]>> for Rom {
         Rom {
             prg_rom_size: prg_rom_size,
             chr_rom_size: chr_rom_size,
+            flags6: flags6,
+            flags7: flags7,
             mapper: (mapper_upper << 4) | mapper_lower,
             prg_rom: prg_rom.into_boxed_slice(),
             chr_rom: chr_rom.into_boxed_slice()

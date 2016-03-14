@@ -5,6 +5,8 @@ pub trait Mapper {
     fn store_byte_prg(&mut self, addr: u16, val: u8);
     fn load_byte_chr(&mut self, addr: u16) -> u8;
     fn store_byte_chr(&mut self, addr: u16, val: u8);
+    
+    fn get_mirroring(&self) -> Mirroring;
 }
 
 pub fn load_mapper(rom: Box<Rom>) -> Box<Mapper> {
@@ -12,6 +14,12 @@ pub fn load_mapper(rom: Box<Rom>) -> Box<Mapper> {
         0 => Box::new(Nrom::new(rom)),
         _ => panic!("Unknown mapper: {}", rom.mapper)
     }
+}
+
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+pub enum Mirroring {
+    Horizontal,
+    Vertical
 }
 
 const NROM_RAM_SIZE: usize = 4096;
@@ -45,7 +53,23 @@ impl Mapper for Nrom {
     fn store_byte_prg(&mut self, _: u16, _: u8) {}
     
     fn load_byte_chr(&mut self, addr: u16) -> u8 {
-        self.rom.chr_rom[addr as usize]
+        if self.rom.chr_rom_size != 0 {
+            self.rom.chr_rom[addr as usize]
+        } else {
+            self.ram[addr as usize & NROM_RAM_SIZE - 1]
+        }
     }
-    fn store_byte_chr(&mut self, _: u16, _: u8) {}
+    fn store_byte_chr(&mut self, addr: u16, val: u8) {
+        if self.rom.chr_rom_size == 0 {
+            self.ram[addr as usize & NROM_RAM_SIZE - 1] = val;
+        }
+    }
+    
+    fn get_mirroring(&self) -> Mirroring {
+        if self.rom.flags6 & 1 == 0 {
+            Mirroring::Horizontal
+        } else {
+            Mirroring::Vertical
+        }
+    }
 }

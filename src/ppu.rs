@@ -1,6 +1,6 @@
 use std::ops::Deref;
 use memory::Memory;
-use mapper::Mapper;
+use mapper::{Mapper, Mirroring};
 
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -63,8 +63,6 @@ pub struct Ppu {
     reg_mask: MaskRegister,
     reg_status: StatusRegister,
     reg_oam_addr: u8,
-    reg_scroll: ScrollRegister,
-    reg_addr: u16,
     
     data_read_buffer: u8,
     
@@ -90,9 +88,7 @@ impl Ppu {
             reg_ctrl: CtrlRegister(0),
             reg_mask: MaskRegister(0),
             reg_status: StatusRegister(0),
-            reg_oam_addr: 0,            
-            reg_scroll: ScrollRegister { x: 0, y: 0 },
-            reg_addr: 0,
+            reg_oam_addr: 0,
             
             data_read_buffer: 0,
             
@@ -116,7 +112,11 @@ impl Ppu {
     pub fn run(&mut self) -> PpuRunResult {
         let mut result = PpuRunResult::default();
             
-        // TODO: render stuff
+        if self.scanline == -1 {
+            // copy vertical bits from t to v
+            self.current_vram_address = (self.current_vram_address & !0x7be0) | (self.temporary_vram_address & 0x7be0);
+        }
+        
         if self.scanline < SCREEN_HEIGHT as i16 {
             self.render_scanline();
         }
@@ -154,13 +154,13 @@ impl Ppu {
         for x in 0 .. SCREEN_WIDTH {
             // get the background color
             let mut background_color = None;
-            if x < 8 && show_background_left || show_background {
+            if x < 8 && show_background_left || x >= 8 && show_background {
                 //background_color = self.get_background_color(x as u16, y as u16);
                 background_color = self.get_background_pixel((x % 8) as u8);
             }
             
             // get sprite color
-            if x < 8 && show_sprites_left || show_sprites {
+            if x < 8 && show_sprites_left || x >= 8 && show_sprites {
                 
             }
             
@@ -179,14 +179,16 @@ impl Ppu {
             if x % 8 == 0 {
                 if (self.current_vram_address & 0x001f) == 31 {
                     self.current_vram_address &= !(0x001f);
-                    //self.current_vram_address ^= 0x0400;
+                    if self.vram.mirroring == Mirroring::Horizontal {
+                        self.current_vram_address ^= 0x0400;
+                    }
                 } else {
                     self.current_vram_address += 1;
                 }
             }
         }
         
-        if show_background || show_background_left || show_sprites || show_sprites_left {
+        if show_background || show_sprites {
             // y increment
             if (self.current_vram_address & 0x7000) != 0x7000 {
                 self.current_vram_address += 0x1000;
@@ -196,7 +198,9 @@ impl Ppu {
                 
                 if y == 29 {
                     y = 0;
-                    self.current_vram_address ^= 0x0800;
+                    if self.vram.mirroring == Mirroring::Vertical {
+                        self.current_vram_address ^= 0x0800;
+                    }
                 } else if y == 31 {
                     y = 0;
                 } else {
@@ -205,13 +209,17 @@ impl Ppu {
                 
                 self.current_vram_address = (self.current_vram_address & !0x03e0) | (y << 5);
             }
+            
+            // copy horizontal bits of t to v
+            self.current_vram_address = (self.current_vram_address & !0x41f) | (self.temporary_vram_address & 0x41f);
         }
     }
     
     fn get_background_pixel(&mut self, x: u8) -> Option<RgbColor> {
         let v = self.current_vram_address;
         
-        let tile_index = self.vram.load_byte(NAMETABLE_START | (v & 0x0FFF)) as u16;
+        let nametable_base = self.reg_ctrl.get_base_nametable_address();
+        let tile_index = self.vram.load_byte(nametable_base | (v & 0x0FFF)) as u16;
         //println!("{:04X} {:02X}", NAMETABLE_START | (v & 0x0FFF), tile_index);
         
         let attribute_addr = 0x23c0 | (v & 0x0c00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07);
@@ -291,6 +299,9 @@ impl Ppu {
             let buffer = self.data_read_buffer;
             self.data_read_buffer = data;
             return buffer;
+        } else if addr >= PALETTE_START && addr <= PALETTE_END {
+            // data is still buffered on palette reads from the corresponding nametable bytes
+            self.data_read_buffer = self.vram.load_byte(NAMETABLE_START | (addr & PPU_RAM_SIZE as u16 - 1));
         }
         
         data
@@ -314,20 +325,18 @@ impl Ppu {
     fn write_oam_data(&mut self, val: u8) {
         let addr = self.reg_oam_addr;
         self.oam.store_byte(addr as u16, val);
-        self.reg_oam_addr += 1;
+        self.reg_oam_addr = self.reg_oam_addr.wrapping_add(1);
     }
     
     fn write_scroll(&mut self, val: u8) {
         match self.write_toggle {
             AddressByte::Upper => {
-                self.reg_scroll.x = val;
                 self.write_toggle = AddressByte::Lower;
                 
                 self.fine_x = val & 0b111;
                 self.temporary_vram_address &= (val as u16 >> 3) | 0xffe0;
             },
             AddressByte::Lower => {
-                self.reg_scroll.y = val;
                 self.write_toggle = AddressByte::Upper;
                 
                 let val = val as u16;
@@ -341,7 +350,6 @@ impl Ppu {
     fn write_addr(&mut self, val: u8) {
         match self.write_toggle {
             AddressByte::Upper => {
-                self.reg_addr = (self.reg_addr & 0x00ff) | (val as u16) << 8;
                 self.write_toggle = AddressByte::Lower;
                 
                 self.temporary_vram_address = self.temporary_vram_address & 0xff | ((val as u16) << 8);
@@ -353,7 +361,6 @@ impl Ppu {
                 }
             },
             AddressByte::Lower => {
-                self.reg_addr = (self.reg_addr & 0xff00) | val as u16;
                 self.write_toggle = AddressByte::Upper;
                 
                 self.temporary_vram_address = self.temporary_vram_address & 0xff00 | val as u16;
@@ -430,16 +437,33 @@ pub struct PpuRunResult {
 struct Vram {
     mapper: Rc<RefCell<Box<Mapper>>>,
     nametable: [u8; PPU_RAM_SIZE], // 2kb ram
-    palette: [u8; 0x20]
+    palette: [u8; 0x20],
+    mirroring: Mirroring
 }
 
 impl Vram {
     fn new(mapper: Rc<RefCell<Box<Mapper>>>) -> Vram {
+        let mirroring = mapper.borrow().get_mirroring();
         Vram {
             mapper: mapper,
             nametable: [0; PPU_RAM_SIZE],
-            palette: [0; 0x20]
+            palette: [0; 0x20],
+            mirroring: mirroring
         }
+    }
+    
+    fn get_nametable_addr(&self, addr: u16) -> usize {
+        let mut nametable_addr = addr as usize & 0xfff;
+        
+        nametable_addr = match (self.mirroring, nametable_addr) {
+            (Mirroring::Horizontal, 0x0000 ... 0x07ff) => nametable_addr & !(1 << 10),
+            (Mirroring::Horizontal, 0x0800 ... 0x0fff) => nametable_addr - 0x400,
+            (Mirroring::Vertical, 0x0000 ... 0x07ff) => nametable_addr,
+            (Mirroring::Vertical, 0x0800 ... 0x0fff) => nametable_addr & !(1 << 11),
+            (_, _) => nametable_addr
+        };
+        
+        nametable_addr & (PPU_RAM_SIZE - 1)
     }
 }
 
@@ -449,7 +473,10 @@ impl Memory for Vram {
         
         match addr {
             MAPPER_START ... MAPPER_END => self.mapper.borrow_mut().load_byte_chr(addr),
-            NAMETABLE_START ... NAMETABLE_END => self.nametable[addr as usize & (PPU_RAM_SIZE - 1)],
+            NAMETABLE_START ... NAMETABLE_END => {
+                let nametable_addr = self.get_nametable_addr(addr);
+                self.nametable[nametable_addr]
+            },
             PALETTE_START ... PALETTE_END => {
                 // handle mirrored addresses
                 let mut addr = addr as usize & 0x1f;
@@ -471,8 +498,11 @@ impl Memory for Vram {
                 self.mapper.borrow_mut().store_byte_chr(addr, val);
             },
             NAMETABLE_START ... NAMETABLE_END => {
-                println!("nametable write {:04X} {:02X}", addr, val);
-                self.nametable[addr as usize & (PPU_RAM_SIZE - 1)] = val;
+                let nametable_addr = self.get_nametable_addr(addr);
+                
+                //println!("nametable write {:04X} {:04X} {:02X}", addr, nametable_addr, val);
+                
+                self.nametable[nametable_addr] = val;
             },
             PALETTE_START ... PALETTE_END => {
                 //println!("palette write {:04X} {:02X}", addr, val);
@@ -674,11 +704,6 @@ impl Deref for MaskRegister {
     fn deref(&self) -> &u8 {
         &self.0
     }
-}
-
-struct ScrollRegister {
-    x: u8,
-    y: u8
 }
 
 enum AddressByte {
