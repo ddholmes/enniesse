@@ -3,7 +3,7 @@ use super::rom::Rom;
 use super::ppu;
 use input::Button;
 
-use minifb::{Key, WindowOptions, Window};
+use minifb::{Key, WindowOptions, Window, Scale};
 
 #[derive(Debug)]
 pub struct Nes {
@@ -20,12 +20,15 @@ impl Nes {
     }
     
     pub fn power_on(&mut self) {
-        let mut window = Window::new("nesrs",
-                                 ppu::SCREEN_WIDTH,
-                                 ppu::SCREEN_HEIGHT,
-                                 WindowOptions::default()).unwrap_or_else(|e| {
-            panic!("{}", e);
-        });
+        let mut window = Window::new("nesrs", ppu::SCREEN_WIDTH, ppu::SCREEN_HEIGHT,
+                                WindowOptions { 
+                                    borderless: false,
+                                    title: true,
+                                    resize: false,
+                                    scale: Scale::X2,
+                                }).unwrap_or_else(|e| {
+                                    panic!("{}", e);
+                                });
         
         self.cpu.reset();
         
