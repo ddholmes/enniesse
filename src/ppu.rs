@@ -109,9 +109,11 @@ impl Ppu {
         }
     }
     
+    // run PPU for one scanline
     pub fn run(&mut self) -> PpuRunResult {
         let mut result = PpuRunResult::default();
             
+        // copy t to v at scanline 0 if rendering is enabled
         if self.scanline == 0 && (self.reg_mask.get_show_background() || self.reg_mask.get_show_sprites()) {
             self.current_vram_address = self.temporary_vram_address;
         }
@@ -149,8 +151,8 @@ impl Ppu {
         let show_sprites_left = self.reg_mask.get_show_sprites_left();
         let show_sprites = self.reg_mask.get_show_sprites();
 
+        // at the start of each scanline copy horizontal (x) bits of t to v if rendering is enabled
         if show_background || show_sprites {
-            // copy horizontal bits of t to v
             self.current_vram_address = (self.current_vram_address & !0x41f) | (self.temporary_vram_address & 0x41f);
         }
         
@@ -160,7 +162,6 @@ impl Ppu {
             // get the background color
             let mut background_color = None;
             if x < 8 && show_background_left || x >= 8 && show_background {
-                //background_color = self.get_background_color(x as u16, y as u16);
                 background_color = self.get_background_pixel((x % 8) as u8);
             }
             
@@ -178,7 +179,7 @@ impl Ppu {
             self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 1] = color.g;
             self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 2] = color.b;
             
-            // increment coarse X
+            // increment coarse X and wrap if needed
             if (x + 1) % 8 == 0 {
                 if (self.current_vram_address & 0x001f) == 31 {
                     self.current_vram_address &= !(0x001f);
@@ -192,7 +193,7 @@ impl Ppu {
         }
         
         if show_background || show_sprites {
-            // y increment
+            // increment y in the current vram address and wrap if needed
             if (self.current_vram_address & 0x7000) != 0x7000 {
                 self.current_vram_address += 0x1000;
             } else {
@@ -215,6 +216,7 @@ impl Ppu {
         }
     }
     
+    // get the color of a pixel (0-7) within the tile referenced by the current vram address (v)
     fn get_background_pixel(&mut self, x: u8) -> Option<RgbColor> {
         let v = self.current_vram_address;
         
