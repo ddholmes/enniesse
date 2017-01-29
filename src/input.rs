@@ -1,7 +1,5 @@
 use memory::Memory;
 
-use minifb::Key;
-
 const CONTROLLER1_ADDR: u16 = 0x4016;
 const CONTROLLER2_ADDR: u16 = 0x4017;
 

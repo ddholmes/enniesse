@@ -1,9 +1,9 @@
-use super::rom::Rom;
-use super::mapper;
-use super::mapper::Mapper;
-use super::apu::Apu;
-use super::ppu::Ppu;
-use super::input::Input;
+use rom::Rom;
+use mapper;
+use mapper::Mapper;
+use apu::Apu;
+use ppu::Ppu;
+use input::Input;
 
 use std::rc::Rc;
 use std::cell::RefCell;

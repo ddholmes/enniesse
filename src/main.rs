@@ -1,7 +1,7 @@
 use std::env;
 
 extern crate nesrs;
-use nesrs::nes;
+use nesrs::emu;
 use nesrs::rom;
 
 fn main() {
@@ -9,8 +9,8 @@ fn main() {
     let rom_file_name = args.nth(1).unwrap();
     
     let rom = rom::Rom::from_file(rom_file_name);
-    
-    let mut nes = nes::Nes::new(Box::new(rom));
-    nes.power_on();
+
+    let mut emu = emu::Emu::new(rom);
+    emu.start();
 }
 
