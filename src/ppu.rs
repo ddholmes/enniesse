@@ -112,12 +112,12 @@ impl Ppu {
     pub fn run(&mut self) -> PpuRunResult {
         let mut result = PpuRunResult::default();
             
-        if self.scanline == -1 {
-            // copy vertical bits from t to v
-            self.current_vram_address = (self.current_vram_address & !0x7be0) | (self.temporary_vram_address & 0x7be0);
+        if self.scanline == 0 && (self.reg_mask.get_show_background() || self.reg_mask.get_show_sprites()) {
+            self.current_vram_address = self.temporary_vram_address;
         }
         
-        if self.scanline < SCREEN_HEIGHT as i16 {
+        if self.scanline >= 0 && self.scanline < SCREEN_HEIGHT as i16 {
+            println!("RENDER SCANLINE {} v:{:04X} t:{:04X}", self.scanline, self.current_vram_address, self.temporary_vram_address);
             self.render_scanline();
         }
         
@@ -127,7 +127,7 @@ impl Ppu {
                 result.vblank = true;
             }
             result.render_frame = true;
-            //println!("[frame]");
+            println!("[frame]");
         } else if self.scanline == VBLANK_SCANLINE_END {
             self.scanline = -1;
             self.reg_status.set_vblank(false);
@@ -148,6 +148,11 @@ impl Ppu {
         let show_background = self.reg_mask.get_show_background();
         let show_sprites_left = self.reg_mask.get_show_sprites_left();
         let show_sprites = self.reg_mask.get_show_sprites();
+
+        if show_background || show_sprites {
+            // copy horizontal bits of t to v
+            self.current_vram_address = (self.current_vram_address & !0x41f) | (self.temporary_vram_address & 0x41f);
+        }
         
         let y = self.scanline;
         
@@ -169,14 +174,12 @@ impl Ppu {
             let color = if let Some(color) = background_color { color } else { backdrop_color };
             
             // write the pixel to the display buffer
-            if y >= 0 {
-                self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 0] = color.r;
-                self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 1] = color.g;
-                self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 2] = color.b;
-            }
+            self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 0] = color.r;
+            self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 1] = color.g;
+            self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 2] = color.b;
             
             // increment coarse X
-            if x % 8 == 0 {
+            if (x + 1) % 8 == 0 {
                 if (self.current_vram_address & 0x001f) == 31 {
                     self.current_vram_address &= !(0x001f);
                     if self.vram.mirroring == Mirroring::Horizontal {
@@ -209,9 +212,6 @@ impl Ppu {
                 
                 self.current_vram_address = (self.current_vram_address & !0x03e0) | (y << 5);
             }
-            
-            // copy horizontal bits of t to v
-            self.current_vram_address = (self.current_vram_address & !0x41f) | (self.temporary_vram_address & 0x41f);
         }
     }
     
@@ -220,11 +220,9 @@ impl Ppu {
         
         let nametable_base = self.reg_ctrl.get_base_nametable_address();
         let tile_index = self.vram.load_byte(nametable_base | (v & 0x0FFF)) as u16;
-        //println!("{:04X} {:02X}", NAMETABLE_START | (v & 0x0FFF), tile_index);
         
         let attribute_addr = 0x23c0 | (v & 0x0c00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07);
         let attribute_byte = self.vram.load_byte(attribute_addr);
-        //println!("{:04X}, {:02X}", attribute_addr, attribute_byte);
         
         // do something with attribute_byte
         let coarse_x = v & 0x1f;
@@ -238,23 +236,21 @@ impl Ppu {
         };
         
         let pattern_address = self.reg_ctrl.get_background_pattern_table_address() as u16;
-        let fineY = (self.current_vram_address >> 12) & 7;
+        let fine_y = (self.current_vram_address >> 12) & 7;
         
-        //println!("{:04X}", pattern_address | (tile_index << 4) | fineY);
-        let plane0 = self.vram.load_byte(pattern_address | (tile_index << 4) | fineY);
-        let plane1 = self.vram.load_byte(pattern_address | (tile_index << 4) | fineY | 8);
+        let plane0 = self.vram.load_byte(pattern_address | (tile_index << 4) | fine_y);
+        let plane1 = self.vram.load_byte(pattern_address | (tile_index << 4) | fine_y | 8);
         
-        let bit0 = (plane0 >> (7 - x - self.fine_x)) & 1;
-        let bit1 = (plane1 >> (7 - x - self.fine_x)) & 1; 
+        // let bit0 = (plane0 >> (7 - x - self.fine_x)) & 1;
+        // let bit1 = (plane1 >> (7 - x - self.fine_x)) & 1; 
+        let bit0 = (plane0 >> (7 - x)) & 1;
+        let bit1 = (plane1 >> (7 - x)) & 1;
         
         let pattern_color = (bit1 << 1) | bit0;
         
         let palette = (attribute_color << 2) | pattern_color;
         let color_index = self.vram.load_byte(PALETTE_START + palette as u16);
         
-        //println!("base: {:X}", base);
-        //println!("tile: {}", tile);
-        //println!("attr color: {}, pattern color: {}, palette index: {}", attribute_color, pattern_color, palette);
         if color_index == 0 {
             return None;
         }

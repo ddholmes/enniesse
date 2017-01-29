@@ -4,6 +4,8 @@ use nes::*;
 use input::Button;
 use ppu;
 use rom::*;
+use std::thread;
+use std::time;
 
 pub struct Emu {
     window: Window,
@@ -40,6 +42,7 @@ impl Emu {
                                 self.nes.cpu.memory_interface.ppu.display_buffer[i * 3 + 2] as u32;
                 }
                 self.window.update_with_buffer(&buffer);
+                thread::sleep(time::Duration::from_millis(16));
             }
 
             self.read_keys();
