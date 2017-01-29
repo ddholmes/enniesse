@@ -29,12 +29,11 @@ impl Emu {
     pub fn start(&mut self) {
         self.nes.power_on();
 
+        let mut buffer: Vec<u32> = vec![0; ppu::SCREEN_WIDTH * ppu::SCREEN_HEIGHT * 3];
         while self.window.is_open() && !self.window.is_key_down(Key::Escape) {
             let (_, render) = self.nes.step();
 
             if render {
-                let mut buffer: Vec<u32> = vec![0; ppu::SCREEN_WIDTH * ppu::SCREEN_HEIGHT * 3];
-
                 for i in 0 .. ppu::SCREEN_WIDTH * ppu::SCREEN_HEIGHT {
                     buffer[i] = (self.nes.cpu.memory_interface.ppu.display_buffer[i * 3] as u32) << 16 |
                                 (self.nes.cpu.memory_interface.ppu.display_buffer[i * 3 + 1] as u32) << 8 |
