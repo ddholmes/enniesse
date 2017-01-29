@@ -119,7 +119,7 @@ impl Ppu {
         }
         
         if self.scanline >= 0 && self.scanline < SCREEN_HEIGHT as i16 {
-            println!("RENDER SCANLINE {} v:{:04X} t:{:04X}", self.scanline, self.current_vram_address, self.temporary_vram_address);
+            //println!("RENDER SCANLINE {} v:{:04X} t:{:04X}", self.scanline, self.current_vram_address, self.temporary_vram_address);
             self.render_scanline();
         }
         
@@ -129,7 +129,7 @@ impl Ppu {
                 result.vblank = true;
             }
             result.render_frame = true;
-            println!("[frame]");
+            //println!("[frame]");
         } else if self.scanline == VBLANK_SCANLINE_END {
             self.scanline = -1;
             self.reg_status.set_vblank(false);
@@ -478,11 +478,11 @@ impl Memory for Vram {
             PALETTE_START ... PALETTE_END => {
                 // handle mirrored addresses
                 let mut addr = addr as usize & 0x1f;
-                if addr >= 0x10 && addr % 4 == 0 {
-                    addr -= 0x10;
+                if addr % 4 == 0 {
+                    addr = 0x00;
                 }
                 
-                self.palette[addr as usize & 0x1f]
+                self.palette[addr]
             },
             0x4000 ... 0x7fff => self.nametable[addr as usize & (PPU_RAM_SIZE - 1)],
             _ => panic!("Unknown PPU address {:04X}", addr)
@@ -506,11 +506,12 @@ impl Memory for Vram {
                 //println!("palette write {:04X} {:02X}", addr, val);
                 // handle mirrored addresses
                 let mut addr = addr as usize & 0x1f;
-                if addr >= 0x10 && addr % 4 == 0 {
-                    addr -= 0x10;
+                if addr % 4 == 0 {
+                    addr = 0x00;
                 }
                 
-                self.palette[addr as usize & 0x1f] = val
+                self.palette[addr] = val;
+                //println!("{:?}", self.palette);
             },
             0x4000 ... 0x7fff => {
                 //println!("nametable write {:04X} {:02X}", addr, val);
