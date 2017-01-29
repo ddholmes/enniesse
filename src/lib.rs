@@ -1,4 +1,4 @@
-extern crate sdl2;
+extern crate minifb;
 
 pub mod cpu;
 mod apu;

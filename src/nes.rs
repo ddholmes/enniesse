@@ -1,11 +1,9 @@
 use super::cpu::Cpu;
 use super::rom::Rom;
 use super::ppu;
-use super::display::Display;
+use input::Button;
 
-use sdl2;
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
+use minifb::{Key, WindowOptions, Window};
 
 #[derive(Debug)]
 pub struct Nes {
@@ -22,10 +20,12 @@ impl Nes {
     }
     
     pub fn power_on(&mut self) {
-        let sdl = sdl2::init().unwrap();
-        let mut event_pump = sdl.event_pump().unwrap();
-        
-        let mut display = Display::new(&sdl, ppu::SCREEN_WIDTH as u32, ppu::SCREEN_HEIGHT as u32);
+        let mut window = Window::new("nesrs",
+                                 ppu::SCREEN_WIDTH,
+                                 ppu::SCREEN_HEIGHT,
+                                 WindowOptions::default()).unwrap_or_else(|e| {
+            panic!("{}", e);
+        });
         
         self.cpu.reset();
         
@@ -45,22 +45,35 @@ impl Nes {
                 }
                 
                 if result.render_frame {
-                    display.render(&*self.cpu.memory_interface.ppu.display_buffer);
+                    let mut buffer: Vec<u32> = vec![0; ppu::SCREEN_WIDTH * ppu::SCREEN_HEIGHT * 3];
+
+                    for i in 0 .. ppu::SCREEN_WIDTH * ppu::SCREEN_HEIGHT {
+                        buffer[i] = (self.cpu.memory_interface.ppu.display_buffer[i * 3] as u32) << 16 |
+                                    (self.cpu.memory_interface.ppu.display_buffer[i * 3 + 1] as u32) << 8 |
+                                    self.cpu.memory_interface.ppu.display_buffer[i * 3 + 2] as u32;
+                    }
+                    window.update_with_buffer(&buffer);
                 }
                 
                 self.cpu.cycle = self.cpu.cycle % ppu::CPU_CYCLES_PER_SCANLINE as usize;
-                
-                for event in event_pump.poll_iter() {
-                    match event {
-                        Event::Quit {..} | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-                            break 'main;
-                        },
-                        Event::KeyDown { keycode: Some(keycode), .. } => self.cpu.memory_interface.input.handle_input(keycode, true),
-                        Event::KeyUp { keycode: Some(keycode), .. } => self.cpu.memory_interface.input.handle_input(keycode, false),
-                        _ => {}
-                    }
+
+                if !window.is_open() || window.is_key_down(Key::Escape) {
+                    break 'main;
                 }
+
+                self.read_keys(&window);
             }
         }
+    }
+
+    fn read_keys(&mut self, window: &Window) {
+        self.cpu.memory_interface.input.handle_input(Button::A, window.is_key_down(Key::Z));
+        self.cpu.memory_interface.input.handle_input(Button::B, window.is_key_down(Key::X));
+        self.cpu.memory_interface.input.handle_input(Button::Select, window.is_key_down(Key::RightShift));
+        self.cpu.memory_interface.input.handle_input(Button::Start, window.is_key_down(Key::Enter));
+        self.cpu.memory_interface.input.handle_input(Button::Up, window.is_key_down(Key::Up));
+        self.cpu.memory_interface.input.handle_input(Button::Down, window.is_key_down(Key::Down));
+        self.cpu.memory_interface.input.handle_input(Button::Left, window.is_key_down(Key::Left));
+        self.cpu.memory_interface.input.handle_input(Button::Right, window.is_key_down(Key::Right));
     }
 }

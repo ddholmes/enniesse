@@ -1,9 +1,20 @@
 use memory::Memory;
 
-use sdl2::keyboard::Keycode;
+use minifb::Key;
 
 const CONTROLLER1_ADDR: u16 = 0x4016;
 const CONTROLLER2_ADDR: u16 = 0x4017;
+
+pub enum Button {
+    A,
+    B,
+    Select,
+    Start,
+    Up,
+    Down,
+    Left,
+    Right
+}
 
 pub struct Input {
     controller1: ControllerState,
@@ -18,17 +29,16 @@ impl Input {
         }
     }
     
-    pub fn handle_input(&mut self, keycode: Keycode, pressed: bool) {
-        match keycode {
-            Keycode::Z      => self.controller1.a      = pressed,
-            Keycode::X      => self.controller1.b      = pressed,
-            Keycode::RShift => self.controller1.select = pressed,
-            Keycode::Return => self.controller1.start  = pressed,
-            Keycode::Up     => self.controller1.up     = pressed,
-            Keycode::Down   => self.controller1.down   = pressed,
-            Keycode::Left   => self.controller1.left   = pressed,
-            Keycode::Right  => self.controller1.right  = pressed,
-            _               => {}
+    pub fn handle_input(&mut self, button: Button, pressed: bool) {
+        match button {
+            Button::A       => self.controller1.a      = pressed,
+            Button::B       => self.controller1.b      = pressed,
+            Button::Select  => self.controller1.select = pressed,
+            Button::Start   => self.controller1.start  = pressed,
+            Button::Up      => self.controller1.up     = pressed,
+            Button::Down    => self.controller1.down   = pressed,
+            Button::Left    => self.controller1.left   = pressed,
+            Button::Right   => self.controller1.right  = pressed,
         }
     }
 }
