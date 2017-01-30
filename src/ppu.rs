@@ -78,8 +78,10 @@ pub struct Ppu {
     
     vram: Vram,
     oam: Oam,
+
+    sprites_to_render: Vec<Sprite>,
     
-    pub display_buffer: Box<[u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3]>
+    pub display_buffer: Box<[u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3]>,
 }
 
 impl Ppu {
@@ -103,8 +105,10 @@ impl Ppu {
             scanline: -1,
             
             vram: Vram::new(mapper),
-            oam: Oam::new(),
+            oam: Oam([0; 256]),
             
+            sprites_to_render: Vec::with_capacity(8),
+
             display_buffer: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3])
         }
     }
@@ -116,11 +120,23 @@ impl Ppu {
         // copy t to v at scanline 0 if rendering is enabled
         if self.scanline == 0 && (self.reg_mask.get_show_background() || self.reg_mask.get_show_sprites()) {
             self.current_vram_address = self.temporary_vram_address;
+
+            // reset sprite 0 hit
+            self.reg_status.set_sprite_0_hit(false);
         }
         
         if self.scanline >= 0 && self.scanline < SCREEN_HEIGHT as i16 {
             //println!("RENDER SCANLINE {} v:{:04X} t:{:04X}", self.scanline, self.current_vram_address, self.temporary_vram_address);
-            self.render_scanline();
+            let show_background_left = self.reg_mask.get_show_background_left();
+            let show_background = self.reg_mask.get_show_background();
+            let show_sprites_left = self.reg_mask.get_show_sprites_left();
+            let show_sprites = self.reg_mask.get_show_sprites();
+            
+            if show_background || show_sprites {
+                self.render_scanline(show_background, show_background_left, show_sprites, show_sprites_left);
+
+                self.get_sprites_to_render();
+            }
         }
         
         if self.scanline == VBLANK_SCANLINE_START {
@@ -142,19 +158,12 @@ impl Ppu {
     
     // rendering
     
-    fn render_scanline(&mut self) {
+    fn render_scanline(&mut self, show_background: bool, show_background_left: bool, show_sprites: bool, show_sprites_left: bool) {
         let backdrop_index = self.vram.load_byte(PALETTE_START);
         let backdrop_color = self.get_color_from_palette(backdrop_index as usize);
-        
-        let show_background_left = self.reg_mask.get_show_background_left();
-        let show_background = self.reg_mask.get_show_background();
-        let show_sprites_left = self.reg_mask.get_show_sprites_left();
-        let show_sprites = self.reg_mask.get_show_sprites();
 
-        // at the start of each scanline copy horizontal (x) bits of t to v if rendering is enabled
-        if show_background || show_sprites {
-            self.current_vram_address = (self.current_vram_address & !0x41f) | (self.temporary_vram_address & 0x41f);
-        }
+        // at the start of each scanline copy horizontal (x) bits of t to v
+        self.current_vram_address = (self.current_vram_address & !0x41f) | (self.temporary_vram_address & 0x41f);
         
         let y = self.scanline;
         
@@ -166,13 +175,34 @@ impl Ppu {
             }
             
             // get sprite color
+            let mut sprite_color = None;
+            let mut sprite_priority = false;
+            let mut is_sprite_0 = false;
             if x < 8 && show_sprites_left || x >= 8 && show_sprites {
-                
+                let sprite_info = self.get_sprite_pixel(x as _);
+                sprite_color = sprite_info.0;
+                sprite_priority = sprite_info.1;
+                is_sprite_0 = sprite_info.2;
             }
-            
+
             // determine what color to use based on priority
-            // TODO
-            let color = if let Some(color) = background_color { color } else { backdrop_color };
+            //let color = if let Some(color) = background_color { color } else { backdrop_color };
+
+            let color = match (background_color, sprite_color) {
+                (None, None) => backdrop_color,
+                (None, Some(sprite)) => sprite,
+                (Some(background), None) => background,
+                (Some(background), Some(sprite)) => {
+                    if is_sprite_0 {
+                        self.reg_status.set_sprite_0_hit(true);
+                    }
+                    if sprite_priority {
+                        background
+                    } else {
+                        sprite
+                    }
+                }
+            };
             
             // write the pixel to the display buffer
             self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 0] = color.r;
@@ -192,27 +222,25 @@ impl Ppu {
             }
         }
         
-        if show_background || show_sprites {
-            // increment y in the current vram address and wrap if needed
-            if (self.current_vram_address & 0x7000) != 0x7000 {
-                self.current_vram_address += 0x1000;
-            } else {
-                self.current_vram_address &= !0x7000;
-                let mut y = (self.current_vram_address & 0x03e0) >> 5;
-                
-                if y == 29 {
-                    y = 0;
-                    if self.vram.mirroring == Mirroring::Vertical {
-                        self.current_vram_address ^= 0x0800;
-                    }
-                } else if y == 31 {
-                    y = 0;
-                } else {
-                    y += 1;
+        // increment y in the current vram address and wrap if needed
+        if (self.current_vram_address & 0x7000) != 0x7000 {
+            self.current_vram_address += 0x1000;
+        } else {
+            self.current_vram_address &= !0x7000;
+            let mut y = (self.current_vram_address & 0x03e0) >> 5;
+            
+            if y == 29 {
+                y = 0;
+                if self.vram.mirroring == Mirroring::Vertical {
+                    self.current_vram_address ^= 0x0800;
                 }
-                
-                self.current_vram_address = (self.current_vram_address & !0x03e0) | (y << 5);
+            } else if y == 31 {
+                y = 0;
+            } else {
+                y += 1;
             }
+            
+            self.current_vram_address = (self.current_vram_address & !0x03e0) | (y << 5);
         }
     }
     
@@ -243,21 +271,91 @@ impl Ppu {
         let plane0 = self.vram.load_byte(pattern_address | (tile_index << 4) | fine_y);
         let plane1 = self.vram.load_byte(pattern_address | (tile_index << 4) | fine_y | 8);
         
-        // let bit0 = (plane0 >> (7 - x - self.fine_x)) & 1;
-        // let bit1 = (plane1 >> (7 - x - self.fine_x)) & 1; 
-        let bit0 = (plane0 >> (7 - x)) & 1;
-        let bit1 = (plane1 >> (7 - x)) & 1;
+        let bit0 = (plane0 >> (7 - x - self.fine_x)) & 1;
+        let bit1 = (plane1 >> (7 - x - self.fine_x)) & 1; 
+        // let bit0 = (plane0 >> (7 - x)) & 1;
+        // let bit1 = (plane1 >> (7 - x)) & 1;
         
         let pattern_color = (bit1 << 1) | bit0;
         
-        let palette = (attribute_color << 2) | pattern_color;
-        let color_index = self.vram.load_byte(PALETTE_START + palette as u16);
+        let palette_index = (attribute_color << 2) | pattern_color;
+        let color_index = self.vram.load_byte(PALETTE_START + palette_index as u16);
         
         if color_index == 0 {
             return None;
         }
         
         Some(self.get_color_from_palette(color_index as usize))
+    }
+
+    fn get_sprite_pixel(&mut self, x: u8) -> (Option<RgbColor>, bool, bool) {
+        for sprite in &self.sprites_to_render {
+            if x >= sprite.x_position && x < sprite.x_position + 8 {
+                let mut pattern_base = 0x0000;
+                match self.reg_ctrl.get_sprite_size() {
+                    SpriteSize::Size8x16 => {
+                        if sprite.tile_index & 1 != 0 {
+                            pattern_base = 0x1000;
+                        }
+                    },
+                    SpriteSize::Size8x8 => {
+                        pattern_base = self.reg_ctrl.get_sprite_pattern_table_address();
+                    },
+                }
+                
+                let pattern_address = pattern_base | sprite.tile_index as u16;
+                //println!("index {:02X}", sprite.tile_index);
+                
+                let plane0 = self.vram.load_byte((pattern_address << 4) | (self.scanline as u16 % 8));
+                let plane1 = self.vram.load_byte((pattern_address << 4) | (self.scanline as u16 % 8) | 8);
+                
+                let bit0 = (plane0 >> (7 - (x - sprite.x_position))) & 1;
+                let bit1 = (plane1 >> (7 - (x - sprite.x_position))) & 1;
+
+                let pattern_color = (bit1 << 1) | bit0;
+                
+                let palette_index = (1 << 4) | ((sprite.attributes & 3) << 2) | pattern_color;
+
+                let color_index = self.vram.load_byte(PALETTE_START + palette_index as u16);
+
+                //println!("color index {:02X}", color_index);
+                let priority = (sprite.attributes >> 5) & 1 == 1;
+
+                let mut color = None;
+                if color_index != 0 {
+                    color = Some(self.get_color_from_palette(color_index as usize));
+                }
+
+                return (color, priority, sprite.is_sprite_0);
+            }
+        }
+        
+        (None, false, false)
+    }
+
+    fn get_sprites_to_render(&mut self) {
+        self.sprites_to_render.clear();
+
+        // this is loading sprites for the next scanline
+        let y = self.scanline as u8 + 1;
+        
+        // oam holds 64 4-byte sprites
+        for n in 0 .. 64 {
+            if self.sprites_to_render.len() == 8 {
+                break;
+            }
+
+            let sprite_index = 4 * n;
+            
+            // grab the 4 bytes from oam
+            let sprite_bytes = &self.oam[sprite_index..sprite_index + 4];
+            let sprite = Sprite::new(sprite_bytes[0], sprite_bytes[1], sprite_bytes[2], sprite_bytes[3], n == 0);
+
+            if y >= sprite.y_position && y < sprite.y_position + 8 {
+                self.sprites_to_render.push(sprite);
+                //println!("{:?}", sprite);
+            }
+        }
     }
     
     fn get_color_from_palette(&self, index: usize) -> RgbColor {
@@ -522,24 +620,22 @@ impl Memory for Vram {
     }
 }
 
-struct Oam {
-    oam : [u8; 256]
-}
-
-impl Oam {
-    fn new() -> Oam {
-        Oam {
-            oam: [0; 256]
-        }
-    }
-}
+struct Oam([u8; 256]);
 
 impl Memory for Oam {
     fn load_byte(&mut self, addr: u16) -> u8 {
-        self.oam[addr as usize & 0x00ff]
+        self.0[addr as usize & 0x00ff]
     }
     fn store_byte(&mut self, addr: u16, val: u8) {
-        self.oam[addr as usize & 0x00ff] = val;
+        self.0[addr as usize & 0x00ff] = val;
+    }
+}
+
+impl Deref for Oam {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        &self.0
     }
 }
 
@@ -655,11 +751,6 @@ impl Deref for CtrlRegister {
     }
 }
 
-enum SpriteSize {
-    Size8x8,
-    Size8x16
-}
-
 #[derive(Copy, Clone)]
 struct MaskRegister(u8);
 
@@ -703,6 +794,32 @@ impl Deref for MaskRegister {
     fn deref(&self) -> &u8 {
         &self.0
     }
+}
+
+#[derive(Debug, Copy, Clone)]
+struct Sprite {
+    y_position: u8,
+    tile_index: u8,
+    attributes: u8,
+    x_position: u8,
+    is_sprite_0: bool,
+}
+
+impl Sprite {
+    fn new(y_position: u8, tile_index: u8, attributes: u8, x_position: u8, is_sprite_0: bool) -> Sprite {
+        Sprite {
+            y_position: y_position,
+            tile_index: tile_index,
+            attributes: attributes,
+            x_position: x_position,
+            is_sprite_0: is_sprite_0,
+        }
+    }
+}
+
+enum SpriteSize {
+    Size8x8,
+    Size8x16
 }
 
 enum AddressByte {
