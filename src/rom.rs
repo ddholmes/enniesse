@@ -73,7 +73,7 @@ impl From<Box<[u8]>> for Rom {
             chr_rom_size: chr_rom_size,
             flags6: flags6,
             flags7: flags7,
-            mapper: (mapper_upper << 4) | mapper_lower,
+            mapper: mapper_upper | (mapper_lower >> 4),
             prg_rom: prg_rom.into_boxed_slice(),
             chr_rom: chr_rom.into_boxed_slice()
         }
