@@ -186,8 +186,6 @@ impl Ppu {
             }
 
             // determine what color to use based on priority
-            //let color = if let Some(color) = background_color { color } else { backdrop_color };
-
             let color = match (background_color, sprite_color) {
                 (None, None) => backdrop_color,
                 (None, Some(sprite)) => sprite,
@@ -213,9 +211,9 @@ impl Ppu {
             if (x + 1) % 8 == 0 {
                 if (self.current_vram_address & 0x001f) == 31 {
                     self.current_vram_address &= !(0x001f);
-                    if self.vram.mirroring == Mirroring::Horizontal {
+                    //if self.vram.mirroring == Mirroring::Horizontal {
                         self.current_vram_address ^= 0x0400;
-                    }
+                    //}
                 } else {
                     self.current_vram_address += 1;
                 }
@@ -231,9 +229,9 @@ impl Ppu {
             
             if y == 29 {
                 y = 0;
-                if self.vram.mirroring == Mirroring::Vertical {
+                //if self.vram.mirroring == Mirroring::Vertical {
                     self.current_vram_address ^= 0x0800;
-                }
+                //}
             } else if y == 31 {
                 y = 0;
             } else {
@@ -248,8 +246,9 @@ impl Ppu {
     fn get_background_pixel(&mut self, x: u8) -> Option<RgbColor> {
         let v = self.current_vram_address;
         
-        let nametable_base = self.reg_ctrl.get_base_nametable_address();
-        let tile_index = self.vram.load_byte(nametable_base | (v & 0x0FFF)) as u16;
+        //let nametable_base = self.reg_ctrl.get_base_nametable_address();
+        //let tile_index = self.vram.load_byte(nametable_base | (v & 0x0FFF)) as u16;
+        let tile_index = self.vram.load_byte(0x2000 | (v & 0x0FFF)) as u16;
         
         let attribute_addr = 0x23c0 | (v & 0x0c00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07);
         let attribute_byte = self.vram.load_byte(attribute_addr);
@@ -266,24 +265,24 @@ impl Ppu {
         };
         
         let pattern_address = self.reg_ctrl.get_background_pattern_table_address() as u16;
-        let fine_y = (self.current_vram_address >> 12) & 7;
+        let fine_y = (v >> 12) & 7;
         
         let plane0 = self.vram.load_byte(pattern_address | (tile_index << 4) | fine_y);
         let plane1 = self.vram.load_byte(pattern_address | (tile_index << 4) | fine_y | 8);
-        
-        let bit0 = (plane0 >> (7 - x - self.fine_x)) & 1;
-        let bit1 = (plane1 >> (7 - x - self.fine_x)) & 1; 
-        // let bit0 = (plane0 >> (7 - x)) & 1;
-        // let bit1 = (plane1 >> (7 - x)) & 1;
-        
+
+        let offset = (7 - x);
+
+        let bit0 = (plane0 >> offset) & 1;
+        let bit1 = (plane1 >> offset) & 1;
+
         let pattern_color = (bit1 << 1) | bit0;
+
+        if pattern_color == 0 {
+            return None;
+        }
         
         let palette_index = (attribute_color << 2) | pattern_color;
         let color_index = self.vram.load_byte(PALETTE_START + palette_index as u16);
-        
-        if color_index == 0 {
-            return None;
-        }
         
         Some(self.get_color_from_palette(color_index as usize))
     }
@@ -306,27 +305,39 @@ impl Ppu {
                 let pattern_address = pattern_base | sprite.tile_index as u16;
                 //println!("index {:02X}", sprite.tile_index);
                 
-                let plane0 = self.vram.load_byte((pattern_address << 4) | (self.scanline as u16 % 8));
-                let plane1 = self.vram.load_byte((pattern_address << 4) | (self.scanline as u16 % 8) | 8);
+                let flip_horizontal = ((sprite.attributes >> 6) & 1) == 1;
+                let flip_vertical = ((sprite.attributes >> 7) & 1) == 1;
+
+                let mut pixel_y_index = self.scanline as u16 - sprite.y_position as u16;
+                // if flip_vertical {
+                //     pixel_y_index = 7 - pixel_y_index;
+                // }
                 
-                let bit0 = (plane0 >> (7 - (x - sprite.x_position))) & 1;
-                let bit1 = (plane1 >> (7 - (x - sprite.x_position))) & 1;
-
-                let pattern_color = (bit1 << 1) | bit0;
+                let plane0 = self.vram.load_byte((pattern_address << 4) | pixel_y_index);
+                let plane1 = self.vram.load_byte((pattern_address << 4) | pixel_y_index | 8);
                 
-                let palette_index = (1 << 4) | ((sprite.attributes & 3) << 2) | pattern_color;
-
-                let color_index = self.vram.load_byte(PALETTE_START + palette_index as u16);
-
-                //println!("color index {:02X}", color_index);
-                let priority = (sprite.attributes >> 5) & 1 == 1;
-
-                let mut color = None;
-                if color_index != 0 {
-                    color = Some(self.get_color_from_palette(color_index as usize));
+                let mut pixel_x_index = 7 - (x - sprite.x_position);
+                if flip_horizontal {
+                    pixel_x_index = x - sprite.x_position;
                 }
 
-                return (color, priority, sprite.is_sprite_0);
+                let bit0 = (plane0 >> pixel_x_index) & 1;
+                let bit1 = (plane1 >> pixel_x_index) & 1;
+
+                let pattern_color = (bit1 << 1) | bit0;
+
+                if pattern_color != 0 {                
+                    let palette_index = (1 << 4) | ((sprite.attributes & 3) << 2) | pattern_color;
+
+                    let color_index = self.vram.load_byte(PALETTE_START + palette_index as u16);
+
+                    //println!("sprite {} - color index {:02X}", sprite.x_position, color_index);
+                    let priority = ((sprite.attributes >> 5) & 1) == 1;
+                    
+                    let color = Some(self.get_color_from_palette(color_index as usize));
+
+                    return (color, priority, sprite.is_sprite_0);
+                }
             }
         }
         
@@ -407,7 +418,7 @@ impl Ppu {
         self.reg_ctrl = CtrlRegister(val);
         
         // the lower 2 bits of the ctrl value are put into bits 10 and 11 of t
-        self.temporary_vram_address &= ((val as u16 & 3) << 10) | 0x73ff;
+        self.temporary_vram_address = (self.temporary_vram_address & 0x73ff) | ((val as u16 & 3) << 10);
     }
     
     fn write_mask(&mut self, val: u8) {
@@ -430,15 +441,16 @@ impl Ppu {
                 self.write_toggle = AddressByte::Lower;
                 
                 self.fine_x = val & 0b111;
-                self.temporary_vram_address &= (val as u16 >> 3) | 0xffe0;
+                // set the bottom five bits to the top 5 bits of the value
+                self.temporary_vram_address = (self.temporary_vram_address & 0x7fe0) | (val as u16 >> 3);
             },
             AddressByte::Lower => {
                 self.write_toggle = AddressByte::Upper;
                 
                 let val = val as u16;
-                self.temporary_vram_address &= ((val & 0b1100_0000) << 2) | 0xfcff;
-                self.temporary_vram_address &= ((val & 0b0011_1000) << 2) | 0xff1f;
-                self.temporary_vram_address &= ((val & 0b0000_0111) << 12) | 0x0fff;
+                self.temporary_vram_address = (self.temporary_vram_address & 0x7cff) | ((val & 0b1100_0000) << 2);
+                self.temporary_vram_address = (self.temporary_vram_address & 0x7f1f) | ((val & 0b0011_1000) << 2);
+                self.temporary_vram_address = (self.temporary_vram_address & 0x0fff) | ((val & 0b0000_0111) << 12);
             }
         }
     }
@@ -448,13 +460,13 @@ impl Ppu {
             AddressByte::Upper => {
                 self.write_toggle = AddressByte::Lower;
                 
-                self.temporary_vram_address = self.temporary_vram_address & 0xff | ((val as u16) << 8);
+                self.temporary_vram_address = (self.temporary_vram_address & 0x00ff) | ((val as u16) << 8);
                 
                 // bit 14 is cleared
-                if self.scanline < VBLANK_SCANLINE_START && self.scanline >= 0 
-                    && (self.reg_mask.get_show_background() || self.reg_mask.get_show_sprites()) {
-                    self.temporary_vram_address &= !(1 << 13);
-                }
+                // if self.scanline < VBLANK_SCANLINE_START && self.scanline >= 0 
+                //     && (self.reg_mask.get_show_background() || self.reg_mask.get_show_sprites()) {
+                    self.temporary_vram_address &= !(1 << 14);
+                // }
             },
             AddressByte::Lower => {
                 self.write_toggle = AddressByte::Upper;
@@ -576,8 +588,8 @@ impl Memory for Vram {
             PALETTE_START ... PALETTE_END => {
                 // handle mirrored addresses
                 let mut addr = addr as usize & 0x1f;
-                if addr % 4 == 0 {
-                    addr = 0x00;
+                if addr & 0x13 == 0x10 {
+                    addr ^= 0x10;
                 }
                 
                 self.palette[addr]
@@ -604,8 +616,8 @@ impl Memory for Vram {
                 //println!("palette write {:04X} {:02X}", addr, val);
                 // handle mirrored addresses
                 let mut addr = addr as usize & 0x1f;
-                if addr % 4 == 0 {
-                    addr = 0x00;
+                if addr & 0x13 == 0x10 {
+                    addr ^= 0x10;
                 }
                 
                 self.palette[addr] = val;
