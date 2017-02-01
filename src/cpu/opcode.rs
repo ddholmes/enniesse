@@ -147,6 +147,7 @@ pub fn decode(opcode: u8) -> &'static str {
         0x9a => { "txs" },
         0x9c => { "*nop" }, // wrong, unimplemented
         0x9d => { "sta" },
+        0x9e => { "*nop" }, // wrong, unimplemented
         0xa0 => { "ldy" },
         0xa1 => { "lda" },
         0xa2 => { "ldx" },

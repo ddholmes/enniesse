@@ -245,6 +245,7 @@ impl Cpu {
             0x9a => { instruction!(txs, 2); },
             0x9c => { instruction!(nop, 2); }, // wrong, but not implementing
             0x9d => { instruction!(sta, addressing_mode::absolute_x, 5); },
+            0x9e => { instruction!(nop, 2); }, // wrong, but not implementing
             0xa0 => { instruction!(ldy, addressing_mode::immediate, 2); },
             0xa1 => { instruction!(lda, addressing_mode::indirect_x, 6); },
             0xa2 => { instruction!(ldx, addressing_mode::immediate, 2); },
