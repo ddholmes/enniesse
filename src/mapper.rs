@@ -41,7 +41,7 @@ impl Nrom {
 impl Mapper for Nrom {
     fn load_byte_prg(&mut self, addr: u16) -> u8 {
         if addr < 0x8000 {
-            self.ram[(addr - 0x6000) as usize]
+            self.ram[(addr & 0x0fff) as usize]
         } else if self.rom.prg_rom.len() > 16384 {
             // max size is 32k
             self.rom.prg_rom[addr as usize & 0x7fff]
