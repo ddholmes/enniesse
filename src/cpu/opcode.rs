@@ -11,6 +11,7 @@ pub fn decode(opcode: u8) -> &'static str {
         0x08 => { "php" },
         0x09 => { "ora" },
         0x0a => { "asl" },
+        0x0b => { "*anc" }, // unofficial
         0x0c => { "*nop" }, // unofficial
         0x0d => { "ora" },
         0x0e => { "asl" },
@@ -40,6 +41,7 @@ pub fn decode(opcode: u8) -> &'static str {
         0x28 => { "plp" },
         0x29 => { "and" },
         0x2a => { "rol" },
+        0x2b => { "*anc" }, // unofficial
         0x2c => { "bit" },
         0x2d => { "and" },
         0x2e => { "rol" },
@@ -69,6 +71,7 @@ pub fn decode(opcode: u8) -> &'static str {
         0x48 => { "pha" },
         0x49 => { "eor" },
         0x4a => { "lsr" },
+        0x4b => { "*alr" }, // unofficial
         0x4c => { "jmp" },
         0x4d => { "eor" },
         0x4e => { "lsr" },
@@ -98,6 +101,7 @@ pub fn decode(opcode: u8) -> &'static str {
         0x68 => { "pla" },
         0x69 => { "adc" },
         0x6a => { "ror" },
+        0x6b => { "*arr" }, // unofficial
         0x6c => { "jmp_indirect" },
         0x6d => { "adc" },
         0x6e => { "ror" },
@@ -119,12 +123,14 @@ pub fn decode(opcode: u8) -> &'static str {
         0x7f => { "*rra" }, // unofficial
         0x80 => { "*nop" }, // unofficial
         0x81 => { "sta" },
+        0x82 => { "*nop" }, // unofficial
         0x83 => { "*sax" }, // unofficial
         0x84 => { "sty" },
         0x85 => { "sta" },
         0x86 => { "stx" },
         0x87 => { "*sax" }, // unofficial
         0x88 => { "dey" },
+        0x89 => { "*nop" }, // unofficial
         0x8a => { "txa" },
         0x8c => { "sty" },
         0x8d => { "sta" },
@@ -139,6 +145,7 @@ pub fn decode(opcode: u8) -> &'static str {
         0x98 => { "tya" },
         0x99 => { "sta" },
         0x9a => { "txs" },
+        0x9c => { "*nop" }, // wrong, unimplemented
         0x9d => { "sta" },
         0xa0 => { "ldy" },
         0xa1 => { "lda" },
@@ -151,6 +158,7 @@ pub fn decode(opcode: u8) -> &'static str {
         0xa8 => { "tay" },
         0xa9 => { "lda" },
         0xaa => { "tax" },
+        0xab => { "*lax" }, // unofficial
         0xac => { "ldy" },
         0xad => { "lda" },
         0xae => { "ldx" },
@@ -171,6 +179,7 @@ pub fn decode(opcode: u8) -> &'static str {
         0xbf => { "*lax" }, // unofficial
         0xc0 => { "cpy" },
         0xc1 => { "cmp" },
+        0xc2 => { "*nop" }, // unofficial
         0xc3 => { "*dcp" }, // unofficial
         0xc4 => { "cpy" },
         0xc5 => { "cmp" },
@@ -179,6 +188,7 @@ pub fn decode(opcode: u8) -> &'static str {
         0xc8 => { "iny" },
         0xc9 => { "cmp" },
         0xca => { "dex" },
+        0xcb => { "*axs" }, // unofficial
         0xcc => { "cpy" },
         0xcd => { "cmp" },
         0xce => { "dec" },
@@ -200,6 +210,7 @@ pub fn decode(opcode: u8) -> &'static str {
         0xdf => { "*dcp" }, // unofficial
         0xe0 => { "cpx" },
         0xe1 => { "sbc" },
+        0xe2 => { "*nop" }, // unofficial
         0xe3 => { "*isc" }, // unofficial
         0xe4 => { "cpx" },
         0xe5 => { "sbc" },

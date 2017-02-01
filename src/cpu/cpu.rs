@@ -109,6 +109,7 @@ impl Cpu {
             0x08 => { instruction!(php, 3); },
             0x09 => { instruction!(ora, addressing_mode::immediate, 2); },
             0x0a => { instruction!(asl, addressing_mode::accumulator, 2); },
+            0x0b => { instruction!(anc, addressing_mode::immediate, 2); }, // unofficial
             0x0c => { instruction!(nop_with_read, addressing_mode::absolute, 4); }, // unofficial
             0x0d => { instruction!(ora, addressing_mode::absolute, 4); },
             0x0e => { instruction!(asl, addressing_mode::absolute, 6); },
@@ -138,6 +139,7 @@ impl Cpu {
             0x28 => { instruction!(plp, 4); },
             0x29 => { instruction!(and, addressing_mode::immediate, 2); },
             0x2a => { instruction!(rol, addressing_mode::accumulator, 2); },
+            0x2b => { instruction!(anc, addressing_mode::immediate, 2); }, // unofficial
             0x2c => { instruction!(bit, addressing_mode::absolute, 4); },
             0x2d => { instruction!(and, addressing_mode::absolute, 4); },
             0x2e => { instruction!(rol, addressing_mode::absolute, 6); },
@@ -167,6 +169,7 @@ impl Cpu {
             0x48 => { instruction!(pha, 3); },
             0x49 => { instruction!(eor, addressing_mode::immediate, 2); },
             0x4a => { instruction!(lsr, addressing_mode::accumulator, 2); },
+            0x4b => { instruction!(alr, addressing_mode::immediate, 2); }, // unofficial
             0x4c => { instruction!(jmp, 3); },
             0x4d => { instruction!(eor, addressing_mode::absolute, 4); },
             0x4e => { instruction!(lsr, addressing_mode::absolute, 6); },
@@ -196,6 +199,7 @@ impl Cpu {
             0x68 => { instruction!(pla, 4); },
             0x69 => { instruction!(adc, addressing_mode::immediate, 2); },
             0x6a => { instruction!(ror, addressing_mode::accumulator, 2); },
+            0x6b => { instruction!(arr, addressing_mode::immediate, 2); }, // unofficial
             0x6c => { instruction!(jmp_indirect, 5); },
             0x6d => { instruction!(adc, addressing_mode::absolute, 4); },
             0x6e => { instruction!(ror, addressing_mode::absolute, 6); },
@@ -217,12 +221,14 @@ impl Cpu {
             0x7f => { instruction!(rra, addressing_mode::absolute_x, 7); }, // unofficial
             0x80 => { instruction!(nop_with_read, addressing_mode::immediate, 2); }, // unofficial
             0x81 => { instruction!(sta, addressing_mode::indirect_x, 6); },
+            0x82 => { instruction!(nop_with_read, addressing_mode::immediate, 2); }, // unofficial
             0x83 => { instruction!(sax, addressing_mode::indirect_x, 6); }, // unofficial
             0x84 => { instruction!(sty, addressing_mode::zero_page, 3); },
             0x85 => { instruction!(sta, addressing_mode::zero_page, 3); },
             0x86 => { instruction!(stx, addressing_mode::zero_page, 3); },
             0x87 => { instruction!(sax, addressing_mode::zero_page, 3); }, // unofficial
             0x88 => { instruction!(dey, 2); },
+            0x89 => { instruction!(nop_with_read, addressing_mode::immediate, 2); }, // unofficial
             0x8a => { instruction!(txa, 2); },
             0x8c => { instruction!(sty, addressing_mode::absolute ,4); },
             0x8d => { instruction!(sta, addressing_mode::absolute, 4); },
@@ -237,6 +243,7 @@ impl Cpu {
             0x98 => { instruction!(tya, 2); },
             0x99 => { instruction!(sta, addressing_mode::absolute_y, 5); },
             0x9a => { instruction!(txs, 2); },
+            0x9c => { instruction!(nop, 2); }, // wrong, but not implementing
             0x9d => { instruction!(sta, addressing_mode::absolute_x, 5); },
             0xa0 => { instruction!(ldy, addressing_mode::immediate, 2); },
             0xa1 => { instruction!(lda, addressing_mode::indirect_x, 6); },
@@ -249,6 +256,7 @@ impl Cpu {
             0xa8 => { instruction!(tay, 2); },
             0xa9 => { instruction!(lda, addressing_mode::immediate, 2); },
             0xaa => { instruction!(tax, 2); },
+            0xab => { instruction!(lax, addressing_mode::immediate, 2); }, // unofficial
             0xac => { instruction!(ldy, addressing_mode::absolute, 4); },
             0xad => { instruction!(lda, addressing_mode::absolute, 4); },
             0xae => { instruction!(ldx, addressing_mode::absolute, 4); },
@@ -269,6 +277,7 @@ impl Cpu {
             0xbf => { instruction!(lax, addressing_mode::absolute_y, 4); }, // unofficial
             0xc0 => { instruction!(cpy, addressing_mode::immediate, 2); },
             0xc1 => { instruction!(cmp, addressing_mode::indirect_x, 6); },
+            0xc2 => { instruction!(nop_with_read, addressing_mode::immediate, 2); }, // unofficial
             0xc3 => { instruction!(dcp, addressing_mode::indirect_x, 8); }, // unofficial
             0xc4 => { instruction!(cpy, addressing_mode::zero_page, 3); },
             0xc5 => { instruction!(cmp, addressing_mode::zero_page, 3); },
@@ -277,6 +286,7 @@ impl Cpu {
             0xc8 => { instruction!(iny, 2); },
             0xc9 => { instruction!(cmp, addressing_mode::immediate, 2); },
             0xca => { instruction!(dex, 2); },
+            0xcb => { instruction!(axs, addressing_mode::immediate, 2); }, // unofficial
             0xcc => { instruction!(cpy, addressing_mode::absolute, 4); },
             0xcd => { instruction!(cmp, addressing_mode::absolute, 4); },
             0xce => { instruction!(dec, addressing_mode::absolute, 6); },
@@ -298,6 +308,7 @@ impl Cpu {
             0xdf => { instruction!(dcp, addressing_mode::absolute_x, 7); }, // unofficial
             0xe0 => { instruction!(cpx, addressing_mode::immediate, 2); },
             0xe1 => { instruction!(sbc, addressing_mode::indirect_x, 6); },
+            0xe2 => { instruction!(nop_with_read, addressing_mode::immediate, 2); }, // unofficial
             0xe3 => { instruction!(isc, addressing_mode::indirect_x, 8); }, // unofficial
             0xe4 => { instruction!(cpx, addressing_mode::zero_page, 3); },
             0xe5 => { instruction!(sbc, addressing_mode::zero_page, 3); },
@@ -458,13 +469,19 @@ impl Cpu {
     // instructions
     
     fn brk(&mut self) {
+        self.reg_pc += 1;
         let pc = self.reg_pc;
-        let status = self.reg_p.as_u8();
-        
-        self.stack_push_word(pc + 1);
-        self.stack_push_byte(status);
         
         self.reg_p.break_command = true;
+        self.reg_p.bit5 = true;
+        
+        let status = self.reg_p.as_u8();
+
+        self.stack_push_word(pc);
+        self.stack_push_byte(status);
+
+        self.reg_p.interrupt_disable = true;
+        
         self.reg_pc = self.load_word(BRK_VECTOR);
     }
     
@@ -835,6 +852,29 @@ impl Cpu {
         mode.store(self, result);
         
         self.adc(mode);
+    }
+
+    // and then lsr A
+    fn alr<T:AddressingMode>(&mut self, mode: T) {
+        self.and(mode);
+        let a_mode = addressing_mode::accumulator(self);
+        self.lsr(a_mode);
+    }
+
+    // Does AND #i, setting N and Z flags based on the result. Then it copies N (bit 7) to C. 
+    fn anc<T:AddressingMode>(&mut self, mode: T) {
+        self.and(mode);
+        self.reg_p.carry = self.reg_p.negative;
+    }
+
+    // Similar to AND #i then ROR A, except sets the flags differently. N and Z are normal, but C is bit 6 and V is bit 6 xor bit 5.
+    fn arr<T:AddressingMode>(&mut self, mode: T) {
+        // TODO
+    }
+
+    // Sets X to {(A AND X) - #value without borrow}, and updates NZC.
+    fn axs<T:AddressingMode>(&mut self, mode: T) {
+        // TODO
     }
 }
 
