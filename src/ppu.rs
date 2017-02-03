@@ -79,6 +79,7 @@ pub struct Ppu {
     vram: Vram,
     oam: Oam,
 
+    tiles_to_render: Vec<Tile>,
     sprites_to_render: Vec<Sprite>,
     
     pub display_buffer: Box<[u8; SCREEN_WIDTH * SCREEN_HEIGHT * 3]>,
@@ -107,6 +108,7 @@ impl Ppu {
             vram: Vram::new(mapper),
             oam: Oam([0; 256]),
             
+            tiles_to_render: Vec::with_capacity(2),
             sprites_to_render: Vec::with_capacity(8),
 
             display_buffer: Box::new([0; SCREEN_WIDTH * SCREEN_HEIGHT * 3])
@@ -116,16 +118,8 @@ impl Ppu {
     // run PPU for one scanline
     pub fn run(&mut self) -> PpuRunResult {
         let mut result = PpuRunResult::default();
-            
-        // copy t to v at scanline 0 if rendering is enabled
-        if self.scanline == 0 && (self.reg_mask.get_show_background() || self.reg_mask.get_show_sprites()) {
-            self.current_vram_address = self.temporary_vram_address;
-
-            // reset sprite 0 hit
-            self.reg_status.set_sprite_0_hit(false);
-        }
         
-        if self.scanline >= 0 && self.scanline < SCREEN_HEIGHT as i16 {
+        if self.scanline < SCREEN_HEIGHT as i16 {
             //println!("RENDER SCANLINE {} v:{:04X} t:{:04X}", self.scanline, self.current_vram_address, self.temporary_vram_address);
             let show_background_left = self.reg_mask.get_show_background_left();
             let show_background = self.reg_mask.get_show_background();
@@ -135,6 +129,7 @@ impl Ppu {
             if show_background || show_sprites {
                 self.render_scanline(show_background, show_background_left, show_sprites, show_sprites_left);
 
+                // load sprites for the next scanline
                 self.get_sprites_to_render();
             }
         }
@@ -147,7 +142,7 @@ impl Ppu {
             result.render_frame = true;
             //println!("[frame]");
         } else if self.scanline == VBLANK_SCANLINE_END {
-            self.scanline = -1;
+            self.scanline = -2;
             self.reg_status.set_vblank(false);
         }
         
@@ -161,127 +156,178 @@ impl Ppu {
     fn render_scanline(&mut self, show_background: bool, show_background_left: bool, show_sprites: bool, show_sprites_left: bool) {
         let backdrop_index = self.vram.load_byte(PALETTE_START);
         let backdrop_color = self.get_color_from_palette(backdrop_index as usize);
-
-        // at the start of each scanline copy horizontal (x) bits of t to v
-        self.current_vram_address = (self.current_vram_address & !0x41f) | (self.temporary_vram_address & 0x41f);
         
         let y = self.scanline;
-        
-        for x in 0 .. SCREEN_WIDTH {
-            // get the background color
-            let mut background_color = None;
-            if x < 8 && show_background_left || x >= 8 && show_background {
-                background_color = self.get_background_pixel((x % 8) as u8);
-            }
-            
-            // get sprite color
-            let mut sprite_color = None;
-            let mut sprite_priority = false;
-            let mut is_sprite_0 = false;
-            if x < 8 && show_sprites_left || x >= 8 && show_sprites {
-                let sprite_info = self.get_sprite_pixel(x as _);
-                sprite_color = sprite_info.0;
-                sprite_priority = sprite_info.1;
-                is_sprite_0 = sprite_info.2;
+
+        // reset sprite 0 hit on the beginning of the prerender scanline
+        if y == -1 {
+            self.reg_status.set_sprite_0_hit(false);
+        }
+
+        for x in 0 .. PPU_CYCLES_PER_SCANLINE {            
+            if y >= 0 {
+                if x > 0 && x % 8 == 0 && x < SCREEN_WIDTH as u16 {
+                    self.tiles_to_render.remove(0);
+
+                    let tile = self.fetch_tile();
+                    self.tiles_to_render.push(tile);
+                }
+                
+                // get the background color
+                let mut background_color = None;
+                if x < 8 && show_background_left || x >= 8 && x < SCREEN_WIDTH as u16 && show_background {
+                    background_color = self.get_background_pixel(x as u8);
+                }
+
+                // get sprite color
+                let mut sprite_color = None;
+                let mut sprite_priority = false;
+                let mut is_sprite_0 = false;
+                if x < 8 && show_sprites_left || x >= 8 && x < SCREEN_WIDTH as u16 && show_sprites {
+                    let sprite_info = self.get_sprite_pixel(x as u8);
+                    sprite_color = sprite_info.0;
+                    sprite_priority = sprite_info.1;
+                    is_sprite_0 = sprite_info.2;
+                }
+
+                // determine what color to use based on priority
+                let color = match (background_color, sprite_color) {
+                    (None, None) => backdrop_color,
+                    (None, Some(sprite)) => sprite,
+                    (Some(background), None) => background,
+                    (Some(background), Some(sprite)) => {
+                        if is_sprite_0 {
+                            self.reg_status.set_sprite_0_hit(true);
+                        }
+                        if sprite_priority {
+                            background
+                        } else {
+                            sprite
+                        }
+                    }
+                };
+
+                // write the pixel to the display buffer
+                if x < SCREEN_WIDTH as u16 {
+                    self.display_buffer[(y as usize * SCREEN_WIDTH + x as usize) * 3 + 0] = color.r;
+                    self.display_buffer[(y as usize * SCREEN_WIDTH + x as usize) * 3 + 1] = color.g;
+                    self.display_buffer[(y as usize * SCREEN_WIDTH + x as usize) * 3 + 2] = color.b;
+                }
             }
 
-            // determine what color to use based on priority
-            let color = match (background_color, sprite_color) {
-                (None, None) => backdrop_color,
-                (None, Some(sprite)) => sprite,
-                (Some(background), None) => background,
-                (Some(background), Some(sprite)) => {
-                    if is_sprite_0 {
-                        self.reg_status.set_sprite_0_hit(true);
-                    }
-                    if sprite_priority {
-                        background
+            if show_background || show_sprites {
+                // after all of the visible pixels are rendered, increment y
+                if x == 256 {
+                    // increment y in the current vram address and wrap if needed
+                    // if fine Y < 7
+                    if (self.current_vram_address & 0x7000) != 0x7000 {
+                        // increment fine Y
+                        self.current_vram_address += 0x1000;
                     } else {
-                        sprite
+                        // fine Y = 0
+                        self.current_vram_address &= !0x7000;
+                        // y = coarse Y
+                        let mut coarse_y = (self.current_vram_address & 0x03e0) >> 5;
+                        // row 29 is the last row of tiles in the nametable
+                        if coarse_y == 29 {
+                            coarse_y = 0;
+                            // switch vertical nametable
+                            self.current_vram_address ^= 0x0800;
+                        } else if coarse_y == 31 {
+                            // if coarse Y is incremented from 31, it wraps to 0
+                            coarse_y = 0;
+                        } else {
+                            // increment coarse Y
+                            coarse_y += 1;
+                        }
+                        // put coarse Y back into v
+                        self.current_vram_address = (self.current_vram_address & !0x03e0) | (coarse_y << 5);
                     }
-                }
-            };
-            
-            // write the pixel to the display buffer
-            self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 0] = color.r;
-            self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 1] = color.g;
-            self.display_buffer[(y as usize * SCREEN_WIDTH + x) * 3 + 2] = color.b;
-            
-            // increment coarse X and wrap if needed
-            if (x + 1) % 8 == 0 {
-                if (self.current_vram_address & 0x001f) == 31 {
-                    self.current_vram_address &= !(0x001f);
-                    //if self.vram.mirroring == Mirroring::Horizontal {
-                        self.current_vram_address ^= 0x0400;
-                    //}
-                } else {
-                    self.current_vram_address += 1;
+                } else if x == 257 {
+                    // at the end of each scanline copy horizontal (x) bits of t to v
+                    self.current_vram_address = (self.current_vram_address & !0x041f) | (self.temporary_vram_address & 0x041f);
+                } else if x == 280 && y == -1 {
+                    // copy vertical bits of t to v
+                    self.current_vram_address = (self.current_vram_address & !0x7be0) | (self.temporary_vram_address & 0x7be0);
+                } else if x == 321 {
+                    // prefetch tiles for next line
+                    if self.tiles_to_render.len() > 1 {
+                        self.tiles_to_render.remove(0);
+                    }
+                    let tile = self.fetch_tile();
+                    self.tiles_to_render.push(tile);
+                } else if x == 329 {
+                    if self.tiles_to_render.len() > 1 {
+                        self.tiles_to_render.remove(0);
+                    }
+
+                    let tile = self.fetch_tile();
+                    self.tiles_to_render.push(tile);
                 }
             }
-        }
-        
-        // increment y in the current vram address and wrap if needed
-        if (self.current_vram_address & 0x7000) != 0x7000 {
-            self.current_vram_address += 0x1000;
-        } else {
-            self.current_vram_address &= !0x7000;
-            let mut y = (self.current_vram_address & 0x03e0) >> 5;
-            
-            if y == 29 {
-                y = 0;
-                //if self.vram.mirroring == Mirroring::Vertical {
-                    self.current_vram_address ^= 0x0800;
-                //}
-            } else if y == 31 {
-                y = 0;
-            } else {
-                y += 1;
-            }
-            
-            self.current_vram_address = (self.current_vram_address & !0x03e0) | (y << 5);
         }
     }
-    
-    // get the color of a pixel (0-7) within the tile referenced by the current vram address (v)
-    fn get_background_pixel(&mut self, x: u8) -> Option<RgbColor> {
-        let v = self.current_vram_address;
+
+    fn fetch_tile(&mut self) -> Tile {
+        let v = self.current_vram_address as u16;
         
-        //let nametable_base = self.reg_ctrl.get_base_nametable_address();
-        //let tile_index = self.vram.load_byte(nametable_base | (v & 0x0FFF)) as u16;
+        // from wiki - pull the tile address bits out of v
         let tile_index = self.vram.load_byte(0x2000 | (v & 0x0FFF)) as u16;
-        
-        let attribute_addr = 0x23c0 | (v & 0x0c00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07);
-        let attribute_byte = self.vram.load_byte(attribute_addr);
-        
-        // do something with attribute_byte
-        let coarse_x = v & 0x1f;
-        let coarse_y = (v >> 5) & 0x1f;
-        let attribute_color = match (coarse_x % 4, coarse_y % 4) {
-            (0 ... 1, 0 ... 1) => attribute_byte >> 0 & 0b0011, // top left
-            (2 ... 3, 0 ... 1) => attribute_byte >> 2 & 0b0011, // top right
-            (0 ... 1, 2 ... 3) => attribute_byte >> 4 & 0b0011, // bottom left
-            (2 ... 3, 2 ... 3) => attribute_byte >> 6 & 0b0011, // bottom right
-            (_, _) => unreachable!()
-        };
-        
+
         let pattern_address = self.reg_ctrl.get_background_pattern_table_address() as u16;
         let fine_y = (v >> 12) & 7;
         
         let plane0 = self.vram.load_byte(pattern_address | (tile_index << 4) | fine_y);
         let plane1 = self.vram.load_byte(pattern_address | (tile_index << 4) | fine_y | 8);
 
-        let offset = (7 - x);
+        // from wiki - pull the attribute address bits out of v
+        let attribute_addr = 0x23c0 | (v & 0x0c00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07);
+        let attribute_byte = self.vram.load_byte(attribute_addr);
 
-        let bit0 = (plane0 >> offset) & 1;
-        let bit1 = (plane1 >> offset) & 1;
+        // grab the low 2 bytes from the attribute table in the proper quadrant
+        // the row is controlled by bit 6 in v (0x40), the column by bit 1 (0x02)
+        let attribute_color = match (v & 0x40 == 0x40, v & 0x02 == 0x02) {
+            (false, false) => attribute_byte >> 0 & 3, // top left
+            (false, true) => attribute_byte >> 2 & 3, // top right
+            (true, false) => attribute_byte >> 4 & 3, // bottom left
+            (true, true) => attribute_byte >> 6 & 3, // bottom right
+        };
 
-        let pattern_color = (bit1 << 1) | bit0;
+        // increment v
+        // if coarse X == 31
+        if (v & 0x001f) == 31 {
+            // coarse X = 0
+            self.current_vram_address &= !(0x001f);
+            // switch horizontal nametable
+            self.current_vram_address ^= 0x0400;
+            
+        } else {
+            // increment coarse X
+            self.current_vram_address += 1;
+        }
+
+        Tile::new(plane0, plane1, attribute_color)
+    }
+
+    fn get_background_pixel(&mut self, current_pixel: u8) -> Option<RgbColor> {
+        let x = current_pixel % 8;
+        
+        let tile_select = (x + self.fine_x) / 8;
+        let offset = (x  + self.fine_x) % 8;
+
+        let tile = &self.tiles_to_render[tile_select as usize];
+        
+        // bit0 of the color from the high byte, bit1 from the low
+        let bit0 = (tile.plane0 >> 7 - offset) & 1;
+        let bit1 = (tile.plane1 >> 7 - offset) & 1;
+
+        let pattern_color = ((bit1 << 1) | bit0) as u8;
 
         if pattern_color == 0 {
             return None;
         }
         
-        let palette_index = (attribute_color << 2) | pattern_color;
+        let palette_index = (tile.attribute_color << 2) | pattern_color;
         let color_index = self.vram.load_byte(PALETTE_START + palette_index as u16);
         
         Some(self.get_color_from_palette(color_index as usize))
@@ -309,9 +355,9 @@ impl Ppu {
                 let flip_vertical = ((sprite.attributes >> 7) & 1) == 1;
 
                 let mut pixel_y_index = self.scanline as u16 - sprite.y_position as u16;
-                // if flip_vertical {
-                //     pixel_y_index = 7 - pixel_y_index;
-                // }
+                if flip_vertical {
+                    pixel_y_index = 7 - pixel_y_index;
+                }
                 
                 let plane0 = self.vram.load_byte((pattern_address << 4) | pixel_y_index);
                 let plane1 = self.vram.load_byte((pattern_address << 4) | pixel_y_index | 8);
@@ -336,7 +382,7 @@ impl Ppu {
                     
                     let color = Some(self.get_color_from_palette(color_index as usize));
 
-                    return (color, priority, sprite.is_sprite_0);
+                    return (color, priority, sprite.index == 0);
                 }
             }
         }
@@ -346,6 +392,10 @@ impl Ppu {
 
     fn get_sprites_to_render(&mut self) {
         self.sprites_to_render.clear();
+
+        if self.scanline == -1 {
+            return;
+        }
 
         // this is loading sprites for the next scanline
         let y = self.scanline as u8 + 1;
@@ -360,9 +410,9 @@ impl Ppu {
             
             // grab the 4 bytes from oam
             let sprite_bytes = &self.oam[sprite_index..sprite_index + 4];
-            let sprite = Sprite::new(sprite_bytes[0], sprite_bytes[1], sprite_bytes[2], sprite_bytes[3], n == 0);
+            let sprite = Sprite::new(sprite_bytes[0], sprite_bytes[1], sprite_bytes[2], sprite_bytes[3], n as u8);
 
-            if y >= sprite.y_position && y < sprite.y_position + 8 {
+            if y >= sprite.y_position && y < sprite.y_position + 8 && sprite.y_position < 0xef {
                 self.sprites_to_render.push(sprite);
                 //println!("{:?}", sprite);
             }
@@ -814,17 +864,33 @@ struct Sprite {
     tile_index: u8,
     attributes: u8,
     x_position: u8,
-    is_sprite_0: bool,
+    index: u8,
 }
 
 impl Sprite {
-    fn new(y_position: u8, tile_index: u8, attributes: u8, x_position: u8, is_sprite_0: bool) -> Sprite {
+    fn new(y_position: u8, tile_index: u8, attributes: u8, x_position: u8, index: u8) -> Sprite {
         Sprite {
             y_position: y_position,
             tile_index: tile_index,
             attributes: attributes,
             x_position: x_position,
-            is_sprite_0: is_sprite_0,
+            index: index,
+        }
+    }
+}
+
+struct Tile {
+    plane0: u8,
+    plane1: u8,
+    attribute_color: u8
+}
+
+impl Tile {
+    fn new (plane0: u8, plane1: u8, attribute_color: u8) -> Tile {
+        Tile {
+            plane0: plane0,
+            plane1: plane1,
+            attribute_color: attribute_color,
         }
     }
 }
