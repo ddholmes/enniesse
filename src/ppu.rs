@@ -133,6 +133,8 @@ impl Ppu {
                 self.get_sprites_to_render();
             }
         }
+
+        self.scanline += 1;
         
         if self.scanline == VBLANK_SCANLINE_START {
             self.reg_status.set_vblank(true);
@@ -142,12 +144,10 @@ impl Ppu {
             result.render_frame = true;
             //println!("[frame]");
         } else if self.scanline == VBLANK_SCANLINE_END {
-            self.scanline = -2;
+            self.scanline = -1;
             self.reg_status.set_vblank(false);
         }
         
-        self.scanline += 1;
-       
         result
     }
     
@@ -335,7 +335,7 @@ impl Ppu {
 
     fn get_sprite_pixel(&mut self, x: u8) -> (Option<RgbColor>, bool, bool) {
         for sprite in &self.sprites_to_render {
-            if x >= sprite.x_position && x < sprite.x_position + 8 {
+            if x >= sprite.x_position && (x < sprite.x_position + 8 || sprite.x_position >= SCREEN_WIDTH as u8 - 8) {
                 let mut pattern_base = 0x0000;
                 match self.reg_ctrl.get_sprite_size() {
                     SpriteSize::Size8x16 => {
