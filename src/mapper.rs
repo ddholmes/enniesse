@@ -6,7 +6,7 @@ pub trait Mapper {
     fn load_byte_chr(&mut self, addr: u16) -> u8;
     fn store_byte_chr(&mut self, addr: u16, val: u8);
     
-    fn get_mirroring(&self) -> Mirroring;
+    fn mirroring(&self) -> Mirroring;
 }
 
 pub fn load_mapper(rom: Box<Rom>) -> Box<Mapper> {
@@ -65,7 +65,7 @@ impl Mapper for Nrom {
         }
     }
     
-    fn get_mirroring(&self) -> Mirroring {
+    fn mirroring(&self) -> Mirroring {
         if self.rom.flags6 & 1 == 0 {
             Mirroring::Horizontal
         } else {

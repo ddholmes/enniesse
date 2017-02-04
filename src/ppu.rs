@@ -115,16 +115,16 @@ impl Ppu {
         
         if self.scanline < SCREEN_HEIGHT as i16 {
             //println!("RENDER SCANLINE {} v:{:04X} t:{:04X}", self.scanline, self.current_vram_address, self.temporary_vram_address);
-            let show_background_left = self.reg_mask.get_show_background_left();
-            let show_background = self.reg_mask.get_show_background();
-            let show_sprites_left = self.reg_mask.get_show_sprites_left();
-            let show_sprites = self.reg_mask.get_show_sprites();
+            let show_background_left = self.reg_mask.show_background_left();
+            let show_background = self.reg_mask.show_background();
+            let show_sprites_left = self.reg_mask.show_sprites_left();
+            let show_sprites = self.reg_mask.show_sprites();
             
             if show_background || show_sprites {
                 self.render_scanline(show_background, show_background_left, show_sprites, show_sprites_left);
 
                 // load sprites for the next scanline
-                self.get_sprites_to_render();
+                self.sprites_to_render();
             }
         }
 
@@ -132,7 +132,7 @@ impl Ppu {
         
         if self.scanline == VBLANK_SCANLINE_START {
             self.reg_status.set_vblank(true);
-            if self.reg_ctrl.get_generate_nmi() {
+            if self.reg_ctrl.generate_nmi() {
                 result.vblank = true;
             }
             result.render_frame = true;
@@ -149,13 +149,14 @@ impl Ppu {
     
     fn render_scanline(&mut self, show_background: bool, show_background_left: bool, show_sprites: bool, show_sprites_left: bool) {
         let backdrop_index = self.vram.load_byte(PALETTE_START);
-        let backdrop_color = self.get_color_from_palette(backdrop_index as usize);
+        let backdrop_color = self.color_from_palette(backdrop_index as usize);
         
         let y = self.scanline;
 
-        // reset sprite 0 hit on the beginning of the prerender scanline
+        // reset sprite 0 hit and sprite overflow on the beginning of the prerender scanline
         if y == -1 {
             self.reg_status.set_sprite_0_hit(false);
+            self.reg_status.set_sprite_overflow(false);
         }
 
         for x in 0 .. PPU_CYCLES_PER_SCANLINE {            
@@ -268,7 +269,7 @@ impl Ppu {
         // from wiki - pull the tile address bits out of v
         let tile_index = self.vram.load_byte(0x2000 | (v & 0x0FFF)) as u16;
 
-        let pattern_address = self.reg_ctrl.get_background_pattern_table_address() as u16;
+        let pattern_address = self.reg_ctrl.background_pattern_table_address() as u16;
         let fine_y = (v >> 12) & 7;
         
         let plane0 = self.vram.load_byte(pattern_address | (tile_index << 4) | fine_y);
@@ -324,21 +325,21 @@ impl Ppu {
         let palette_index = (tile.attribute_color << 2) | pattern_color;
         let color_index = self.vram.load_byte(PALETTE_START + palette_index as u16);
         
-        Some(self.get_color_from_palette(color_index as usize))
+        Some(self.color_from_palette(color_index as usize))
     }
 
     fn get_sprite_pixel(&mut self, x: u8) -> (Option<RgbColor>, bool, bool) {
         for sprite in &self.sprites_to_render {
             if x >= sprite.x_position && (x < sprite.x_position + 8 || sprite.x_position >= (SCREEN_WIDTH - 8) as u8) {
                 let mut pattern_base = 0x0000;
-                match self.reg_ctrl.get_sprite_size() {
+                match self.reg_ctrl.sprite_size() {
                     SpriteSize::Size8x16 => {
                         if sprite.tile_index & 1 != 0 {
                             pattern_base = 0x1000;
                         }
                     },
                     SpriteSize::Size8x8 => {
-                        pattern_base = self.reg_ctrl.get_sprite_pattern_table_address();
+                        pattern_base = self.reg_ctrl.sprite_pattern_table_address();
                     },
                 }
                 
@@ -374,7 +375,7 @@ impl Ppu {
                     //println!("sprite {} - color index {:02X}", sprite.x_position, color_index);
                     let priority = ((sprite.attributes >> 5) & 1) == 1;
                     
-                    let color = Some(self.get_color_from_palette(color_index as usize));
+                    let color = Some(self.color_from_palette(color_index as usize));
 
                     return (color, priority, sprite.index == 0);
                 }
@@ -384,7 +385,7 @@ impl Ppu {
         (None, false, false)
     }
 
-    fn get_sprites_to_render(&mut self) {
+    fn sprites_to_render(&mut self) {
         self.sprites_to_render.clear();
 
         if self.scanline == -1 {
@@ -396,10 +397,6 @@ impl Ppu {
         
         // oam holds 64 4-byte sprites
         for n in 0 .. 64 {
-            if self.sprites_to_render.len() == 8 {
-                break;
-            }
-
             let sprite_index = 4 * n;
             
             // grab the 4 bytes from oam
@@ -407,13 +404,18 @@ impl Ppu {
             let sprite = Sprite::new(sprite_bytes[0], sprite_bytes[1], sprite_bytes[2], sprite_bytes[3], n as u8);
 
             if y >= sprite.y_position && y < sprite.y_position + 8 && sprite.y_position < 0xef {
+                if self.sprites_to_render.len() == 8 {
+                    // note: this isn't quite correct due to a hardware bug
+                    self.reg_status.set_sprite_overflow(true);
+                    break;
+                }
                 self.sprites_to_render.push(sprite);
                 //println!("{:?}", sprite);
             }
         }
     }
     
-    fn get_color_from_palette(&self, index: usize) -> RgbColor {
+    fn color_from_palette(&self, index: usize) -> RgbColor {
         RgbColor {
             r: RGB_PALETTE[index * 3],
             g: RGB_PALETTE[index * 3 + 1],
@@ -442,7 +444,7 @@ impl Ppu {
     
     fn read_data(&mut self) -> u8 {
         let addr = self.current_vram_address;
-        self.current_vram_address += self.reg_ctrl.get_vram_address_increment();
+        self.current_vram_address += self.reg_ctrl.vram_address_increment();
         let data = self.vram.load_byte(addr);
         
         // reads before the palette are buffered
@@ -508,7 +510,7 @@ impl Ppu {
                 
                 // bit 14 is cleared
                 // if self.scanline < VBLANK_SCANLINE_START && self.scanline >= 0 
-                //     && (self.reg_mask.get_show_background() || self.reg_mask.get_show_sprites()) {
+                //     && (self.reg_mask.show_background() || self.reg_mask.show_sprites()) {
                     self.temporary_vram_address &= !(1 << 14);
                 // }
             },
@@ -524,7 +526,7 @@ impl Ppu {
     fn write_data(&mut self, val: u8) {
         let addr = self.current_vram_address;
         self.vram.store_byte(addr, val);
-        self.current_vram_address += self.reg_ctrl.get_vram_address_increment();
+        self.current_vram_address += self.reg_ctrl.vram_address_increment();
     }
     
     // fn trace_read(addr: u16) {
@@ -595,7 +597,7 @@ struct Vram {
 
 impl Vram {
     fn new(mapper: Rc<RefCell<Box<Mapper>>>) -> Vram {
-        let mirroring = mapper.borrow().get_mirroring();
+        let mirroring = mapper.borrow().mirroring();
         Vram {
             mapper: mapper,
             nametable: [0; PPU_RAM_SIZE],
@@ -604,7 +606,7 @@ impl Vram {
         }
     }
     
-    fn get_nametable_addr(&self, addr: u16) -> usize {
+    fn nametable_addr(&self, addr: u16) -> usize {
         let mut nametable_addr = addr as usize & 0xfff;
         
         nametable_addr = match (self.mirroring, nametable_addr) {
@@ -626,7 +628,7 @@ impl Memory for Vram {
         match addr {
             MAPPER_START ... MAPPER_END => self.mapper.borrow_mut().load_byte_chr(addr),
             NAMETABLE_START ... NAMETABLE_END => {
-                let nametable_addr = self.get_nametable_addr(addr);
+                let nametable_addr = self.nametable_addr(addr);
                 self.nametable[nametable_addr]
             },
             PALETTE_START ... PALETTE_END => {
@@ -650,7 +652,7 @@ impl Memory for Vram {
                 self.mapper.borrow_mut().store_byte_chr(addr, val);
             },
             NAMETABLE_START ... NAMETABLE_END => {
-                let nametable_addr = self.get_nametable_addr(addr);
+                let nametable_addr = self.nametable_addr(addr);
                 
                 //println!("nametable write {:04X} {:04X} {:02X}", addr, nametable_addr, val);
                 
@@ -698,19 +700,7 @@ impl Deref for Oam {
 #[derive(Copy, Clone)]
 struct StatusRegister(u8);
 
-impl StatusRegister {
-    fn get_vblank(&self) -> bool {
-        self.0 & 0b1000_0000 != 0
-    }
-    
-    fn get_sprite_0_hit(&self) -> bool {
-        self.0 & 0b0100_0000 != 0
-    }
-    
-    fn get_sprite_overflow(&self) -> bool {
-        self.0 & 0b0010_0000 != 0
-    }
-    
+impl StatusRegister {    
     fn set_vblank(&mut self, val: bool) {
         if val {
             self.0 |= 0b1000_0000;
@@ -748,46 +738,24 @@ impl Deref for StatusRegister {
 struct CtrlRegister(u8);
 
 impl CtrlRegister {
-    fn get_base_nametable_address(&self) -> u16 {
-        match self.0 & 0b0000_0011 {
-            0 => 0x2000,
-            1 => 0x2400,
-            2 => 0x2800,
-            3 => 0x2c00,
-            _ => unreachable!()
-        }
-    }
-    
-    fn get_vram_address_increment(&self) -> u16 {
+    fn vram_address_increment(&self) -> u16 {
         if self.0 & 0b0000_0100 != 0 { 32 } else { 1 }
     }
     
-    fn get_sprite_pattern_table_address(&self) -> u16 {
+    fn sprite_pattern_table_address(&self) -> u16 {
         if self.0 & 0b0000_1000 != 0 { 0x1000 } else { 0x0000 }
     }
     
-    fn get_background_pattern_table_address(&self) -> u16 {
+    fn background_pattern_table_address(&self) -> u16 {
         if self.0 & 0b0001_0000 != 0 { 0x1000 } else { 0x0000 }
     }
     
-    fn get_sprite_size(&self) -> SpriteSize {
+    fn sprite_size(&self) -> SpriteSize {
         if self.0 & 0b0010_0000 != 0 { SpriteSize::Size8x16 } else { SpriteSize::Size8x8 }
     }
     
-    fn get_master_slave_select(&self) -> bool {
-        self.0 & 0b0100_0000 != 0
-    }
-    
-    fn get_generate_nmi(&self) -> bool {
+    fn generate_nmi(&self) -> bool {
         self.0 & 0b1000_0000 != 0
-    }
-    
-    fn set_generate_nmi(&mut self, val: bool) {
-        if val {
-            self.0 |= 0b1000_0000;
-        } else {
-            self.0 &= 0b0111_1111;
-        }
     }
 }
 
@@ -802,38 +770,39 @@ impl Deref for CtrlRegister {
 #[derive(Copy, Clone)]
 struct MaskRegister(u8);
 
-impl MaskRegister {
-    fn get_greyscale(&self) -> bool {
-        self.0 & 0b0000_0001 != 0
-    }
-    
-    fn get_show_background_left(&self) -> bool {
+impl MaskRegister {    
+    fn show_background_left(&self) -> bool {
         self.0 & 0b0000_0010 != 0
     }
     
-    fn get_show_sprites_left(&self) -> bool {
+    fn show_sprites_left(&self) -> bool {
         self.0 & 0b0000_0100 != 0
     }
     
-    fn get_show_background(&self) -> bool {
+    fn show_background(&self) -> bool {
         self.0 & 0b0000_1000 != 0
     }
     
-    fn get_show_sprites(&self) -> bool {
+    fn show_sprites(&self) -> bool {
         self.0 & 0b0001_0000 != 0
     }
+
+    // color manipulation stuff unused for now
+    // fn greyscale(&self) -> bool {
+    //     self.0 & 0b0000_0001 != 0
+    // }
     
-    fn get_emphasize_red(&self) -> bool {
-        self.0 & 0b0010_0000 != 0
-    }
+    // fn emphasize_red(&self) -> bool {
+    //     self.0 & 0b0010_0000 != 0
+    // }
     
-    fn get_emphasize_green(&self) -> bool {
-        self.0 & 0b0100_0000 != 0
-    }
+    // fn emphasize_green(&self) -> bool {
+    //     self.0 & 0b0100_0000 != 0
+    // }
     
-    fn get_emphasize_blue(&self) -> bool {
-        self.0 & 0b1000_0000 != 0
-    }
+    // fn emphasize_blue(&self) -> bool {
+    //     self.0 & 0b1000_0000 != 0
+    // }
 }
 
 impl Deref for MaskRegister {

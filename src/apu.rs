@@ -15,6 +15,7 @@ const DMC_END: u16 = 0x4013;
 const STATUS: u16 = 0x4015;
 const FRAME_COUNTER: u16 = 0x4017;
 
+#[allow(dead_code)]
 pub struct Apu {
     reg_pulse1: PulseRegister,
     reg_pulse2: PulseRegister,
