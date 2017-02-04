@@ -71,9 +71,6 @@ pub struct Ppu {
     fine_x: u8, // x
     write_toggle: AddressByte, // w
     
-    shifter_low: u8,
-    shifter_high: u8,
-    
     scanline: i16,
     
     vram: Vram,
@@ -99,9 +96,6 @@ impl Ppu {
             temporary_vram_address: 0,
             fine_x: 0,
             write_toggle: AddressByte::Upper,
-            
-            shifter_low: 0,
-            shifter_high: 0,
             
             scanline: -1,
             
@@ -335,7 +329,7 @@ impl Ppu {
 
     fn get_sprite_pixel(&mut self, x: u8) -> (Option<RgbColor>, bool, bool) {
         for sprite in &self.sprites_to_render {
-            if x >= sprite.x_position && (x < sprite.x_position + 8 || sprite.x_position >= SCREEN_WIDTH as u8 - 8) {
+            if x >= sprite.x_position && (x < sprite.x_position + 8 || sprite.x_position >= (SCREEN_WIDTH - 8) as u8) {
                 let mut pattern_base = 0x0000;
                 match self.reg_ctrl.get_sprite_size() {
                     SpriteSize::Size8x16 => {
@@ -533,19 +527,19 @@ impl Ppu {
         self.current_vram_address += self.reg_ctrl.get_vram_address_increment();
     }
     
-    fn trace_read(addr: u16) {
-        //println!("R: {:04X}", addr);
-    }
+    // fn trace_read(addr: u16) {
+    //     println!("R: {:04X}", addr);
+    // }
     
-    fn trace_write(addr: u16, val: u8) {
-        //println!("W: {:04X} -> {:02X}", addr, val);
-    }
+    // fn trace_write(addr: u16, val: u8) {
+    //     println!("W: {:04X} -> {:02X}", addr, val);
+    // }
 }
 
 // cpu memory interface to ppu registers
 impl Memory for Ppu {
     fn load_byte(&mut self, addr: u16) -> u8 {
-        Ppu::trace_read(addr);
+        // Ppu::trace_read(addr);
         
         // repeats every 8 bytes
         match addr & 0x07 {
@@ -561,7 +555,7 @@ impl Memory for Ppu {
         }
     }
     fn store_byte(&mut self, addr: u16, val: u8) {
-        Ppu::trace_write(addr, val);
+        // Ppu::trace_write(addr, val);
         
         // repeats every 8 bytes
         match addr & 0x07 {
@@ -627,7 +621,7 @@ impl Vram {
 
 impl Memory for Vram {
     fn load_byte(&mut self, addr: u16) -> u8 {
-        Ppu::trace_read(addr);
+        // Ppu::trace_read(addr);
         
         match addr {
             MAPPER_START ... MAPPER_END => self.mapper.borrow_mut().load_byte_chr(addr),
@@ -649,7 +643,7 @@ impl Memory for Vram {
         }
     }
     fn store_byte(&mut self, addr: u16, val: u8) {
-        Ppu::trace_write(addr, val);
+        // Ppu::trace_write(addr, val);
         
         match addr {
             MAPPER_START ... MAPPER_END => {
@@ -762,14 +756,6 @@ impl CtrlRegister {
             3 => 0x2c00,
             _ => unreachable!()
         }
-    }
-    
-    fn get_x_scroll_offset(&self) -> u8 {
-        if self.0 & 0b0000_0001 != 0 { 256 } else { 0 }
-    }
-    
-    fn get_y_scroll_offset(&self) -> u8 {
-        if self.0 & 0b0000_0010 != 0 { 240 } else { 0 }
     }
     
     fn get_vram_address_increment(&self) -> u16 {

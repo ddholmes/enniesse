@@ -199,7 +199,7 @@ impl Cpu {
             0x68 => { instruction!(pla, 4); },
             0x69 => { instruction!(adc, addressing_mode::immediate, 2); },
             0x6a => { instruction!(ror, addressing_mode::accumulator, 2); },
-            0x6b => { instruction!(arr, addressing_mode::immediate, 2); }, // unofficial
+            0x6b => { instruction!(arr, 2); }, // unofficial
             0x6c => { instruction!(jmp_indirect, 5); },
             0x6d => { instruction!(adc, addressing_mode::absolute, 4); },
             0x6e => { instruction!(ror, addressing_mode::absolute, 6); },
@@ -287,7 +287,7 @@ impl Cpu {
             0xc8 => { instruction!(iny, 2); },
             0xc9 => { instruction!(cmp, addressing_mode::immediate, 2); },
             0xca => { instruction!(dex, 2); },
-            0xcb => { instruction!(axs, addressing_mode::immediate, 2); }, // unofficial
+            0xcb => { instruction!(axs, 2); }, // unofficial
             0xcc => { instruction!(cpy, addressing_mode::absolute, 4); },
             0xcd => { instruction!(cmp, addressing_mode::absolute, 4); },
             0xce => { instruction!(dec, addressing_mode::absolute, 6); },
@@ -869,12 +869,12 @@ impl Cpu {
     }
 
     // Similar to AND #i then ROR A, except sets the flags differently. N and Z are normal, but C is bit 6 and V is bit 6 xor bit 5.
-    fn arr<T:AddressingMode>(&mut self, mode: T) {
+    fn arr(&mut self) {
         // TODO
     }
 
     // Sets X to {(A AND X) - #value without borrow}, and updates NZC.
-    fn axs<T:AddressingMode>(&mut self, mode: T) {
+    fn axs(&mut self) {
         // TODO
     }
 }

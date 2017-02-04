@@ -31,7 +31,7 @@ impl Emu {
     pub fn start(&mut self) {
         self.nes.power_on();
 
-        let mut buffer: Vec<u32> = vec![0; ppu::SCREEN_WIDTH * ppu::SCREEN_HEIGHT * 3];
+        let mut buffer: Vec<u32> = vec![0; ppu::SCREEN_WIDTH * ppu::SCREEN_HEIGHT];
         while self.window.is_open() && !self.window.is_key_down(Key::Escape) {
             let (_, render) = self.nes.step();
 
