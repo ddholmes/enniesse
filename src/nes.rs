@@ -26,8 +26,13 @@ impl Nes {
         
         let cycles = self.cpu.cycle;
         let mut render = false;
+
+        // 256 ppu cycles (~85 cpu cycles) for the visible pixels
+        if cycles >= 85 && self.cpu.memory_interface.ppu.cycle == 0 {
+            self.cpu.memory_interface.ppu.run(true);
+        }
         if cycles >= ppu::CPU_CYCLES_PER_SCANLINE as usize {
-            let result = self.cpu.memory_interface.ppu.run();
+            let result = self.cpu.memory_interface.ppu.run(false);
             
             if result.vblank {
                 self.cpu.nmi();

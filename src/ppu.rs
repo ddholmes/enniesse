@@ -72,6 +72,7 @@ pub struct Ppu {
     fine_x: u8, // x
     write_toggle: AddressByte, // w
     
+    pub cycle: u16,
     scanline: i16,
     
     vram: Vram,
@@ -98,6 +99,7 @@ impl Ppu {
             fine_x: 0,
             write_toggle: AddressByte::Upper,
             
+            cycle: 0,
             scanline: -1,
             
             vram: Vram::new(mapper),
@@ -111,7 +113,7 @@ impl Ppu {
     }
     
     // run PPU for one scanline
-    pub fn run(&mut self) -> PpuRunResult {
+    pub fn run(&mut self, visible_cycles: bool) -> PpuRunResult {
         let mut result = PpuRunResult::default();
         
         if self.scanline < SCREEN_HEIGHT as i16 {
@@ -121,21 +123,23 @@ impl Ppu {
             let show_sprites_left = self.reg_mask.show_sprites_left();
             let show_sprites = self.reg_mask.show_sprites();
             
-            self.render_scanline(show_background, show_background_left, show_sprites, show_sprites_left);
+            self.render_scanline(show_background, show_background_left, show_sprites, show_sprites_left, visible_cycles);
         }
 
-        self.scanline += 1;
-        
-        if self.scanline == VBLANK_SCANLINE_START {
-            self.reg_status.set_vblank(true);
-            if self.reg_ctrl.generate_nmi() {
-                result.vblank = true;
+        if !visible_cycles {
+            self.scanline += 1;
+
+            if self.scanline == VBLANK_SCANLINE_START {
+                self.reg_status.set_vblank(true);
+                if self.reg_ctrl.generate_nmi() {
+                    result.vblank = true;
+                }
+                result.render_frame = true;
+                //println!("[frame]");
+            } else if self.scanline == VBLANK_SCANLINE_END {
+                self.scanline = -1;
+                self.reg_status.set_vblank(false);
             }
-            result.render_frame = true;
-            println!("[frame]");
-        } else if self.scanline == VBLANK_SCANLINE_END {
-            self.scanline = -1;
-            self.reg_status.set_vblank(false);
         }
         
         result
@@ -143,7 +147,7 @@ impl Ppu {
     
     // rendering
     
-    fn render_scanline(&mut self, show_background: bool, show_background_left: bool, show_sprites: bool, show_sprites_left: bool) {
+    fn render_scanline(&mut self, show_background: bool, show_background_left: bool, show_sprites: bool, show_sprites_left: bool, visible_cycles: bool) {
         let backdrop_index = self.vram.load_byte(PALETTE_START);
         let backdrop_color = self.color_from_palette(backdrop_index as usize);
         
@@ -159,11 +163,21 @@ impl Ppu {
             self.tiles_to_render.clear();
         }
 
-        if y == 32 {
-            println!("render_scanline v:{:04X} t:{:04X}", self.current_vram_address, self.temporary_vram_address);
+        let start_cycle = self.cycle;
+        
+        let mut end_cycle = SCREEN_WIDTH as u16;
+        if !visible_cycles {
+            end_cycle = PPU_CYCLES_PER_SCANLINE;
         }
 
-        for cycle in 1 .. PPU_CYCLES_PER_SCANLINE + 1 {
+        for cycle in start_cycle .. end_cycle {
+            self.cycle = cycle;
+
+            // ppu idles on cycle 0
+            if cycle == 0 {
+                continue;
+            }
+            
             let x = cycle - 1;
 
             if show_background || show_sprites {
@@ -253,32 +267,27 @@ impl Ppu {
                     }
                 } else if cycle == 257 {
                     // at the end of each scanline copy horizontal (x) bits of t to v
-                    self.current_vram_address = (self.current_vram_address & !0x041f) | (self.temporary_vram_address & 0x041f);
-                    if self.scanline == 32 {
-                        println!("copy horizontal v:{:04X} t:{:04X}", self.current_vram_address, self.temporary_vram_address);
-                    }
-                } else if cycle == 280 && y == -1 {
-                    // copy vertical bits of t to v
-                    self.current_vram_address = (self.current_vram_address & !0x7be0) | (self.temporary_vram_address & 0x7be0);
+                    self.copy_horizontal();
+                } else if y == -1 && cycle >= 280 && cycle <= 304 {
+                    // at the end of the prerender scanline copy the vertical bits of t to v
+                    self.copy_vertical();
                 }
             }
+        }
+
+        if self.cycle == 340 {
+            self.cycle = 0;
         }
     }
 
     fn fetch_tile(&mut self) -> Tile {
         let v = self.current_vram_address as u16;
-
-        if self.scanline == 32 {
-            println!("fetch_tile v:{:04X} t:{:04X}", self.current_vram_address, self.temporary_vram_address);
-        }
         
         // from wiki - pull the tile address bits out of v
         let tile_index = self.vram.load_byte(0x2000 | (v & 0x0FFF)) as u16;
 
         let pattern_address = self.reg_ctrl.background_pattern_table_address() as u16;
         let fine_y = (v >> 12) & 7;
-
-        //println!("{}", fine_y);
         
         let plane0 = self.vram.load_byte(pattern_address | (tile_index << 4) | fine_y);
         let plane1 = self.vram.load_byte(pattern_address | (tile_index << 4) | fine_y | 8);
@@ -303,10 +312,6 @@ impl Ppu {
             self.current_vram_address &= !(0x001f);
             // switch horizontal nametable
             self.current_vram_address ^= 0x0400;
-
-            if self.scanline == 32 {
-                println!("[horizontal nametable switch] v:{:04X} t:{:04X}", self.current_vram_address, self.temporary_vram_address);
-            }
         } else {
             // increment coarse X
             self.current_vram_address += 1;
@@ -432,6 +437,16 @@ impl Ppu {
             b: RGB_PALETTE[index * 3 + 2]
         }
     }
+
+    fn copy_horizontal(&mut self) {
+        // copy the horizontal (x) bits of t to v
+        self.current_vram_address = (self.current_vram_address & !0x041f) | (self.temporary_vram_address & 0x041f);
+    }
+
+    fn copy_vertical(&mut self) {
+        // copy vertical bits of t to v
+        self.current_vram_address = (self.current_vram_address & !0x7be0) | (self.temporary_vram_address & 0x7be0);
+    }
     
     
     // register read/writes
@@ -536,19 +551,19 @@ impl Ppu {
         self.current_vram_address += self.reg_ctrl.vram_address_increment();
     }
     
-    // fn trace_read(addr: u16) {
-    //     println!("R: {:04X}", addr);
-    // }
+    //fn trace_read(scanline: i16, addr: u16) {
+        //println!("{} R: {:04X}", scanline, addr);
+    //}
     
-    // fn trace_write(addr: u16, val: u8) {
-    //     println!("W: {:04X} -> {:02X}", addr, val);
-    // }
+    //fn trace_write(scanline: i16, addr: u16, val: u8) {
+        //println!("{} W: {:04X} -> {:02X}", scanline, addr, val);
+    //}
 }
 
 // cpu memory interface to ppu registers
 impl Memory for Ppu {
     fn load_byte(&mut self, addr: u16) -> u8 {
-        // Ppu::trace_read(addr);
+        //Ppu::trace_read(self.scanline, addr);
         
         // repeats every 8 bytes
         match addr & 0x07 {
@@ -564,7 +579,7 @@ impl Memory for Ppu {
         }
     }
     fn store_byte(&mut self, addr: u16, val: u8) {
-        // Ppu::trace_write(addr, val);
+        //Ppu::trace_write(self.scanline, addr, val);
         
         // repeats every 8 bytes
         match addr & 0x07 {
