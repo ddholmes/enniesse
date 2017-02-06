@@ -27,10 +27,6 @@ impl Nes {
         let cycles = self.cpu.cycle;
         let mut render = false;
 
-        // 256 ppu cycles (~85 cpu cycles) for the visible pixels
-        if cycles >= 85 && self.cpu.memory_interface.ppu.cycle == 0 {
-            self.cpu.memory_interface.ppu.run(true);
-        }
         if cycles >= ppu::CPU_CYCLES_PER_SCANLINE as usize {
             let result = self.cpu.memory_interface.ppu.run(false);
             
@@ -45,6 +41,9 @@ impl Nes {
             render = result.render_frame;
             
             self.cpu.cycle = cycles % ppu::CPU_CYCLES_PER_SCANLINE as usize;
+        } else if cycles >= (ppu::SCREEN_WIDTH / 3) && self.cpu.memory_interface.ppu.cycle == 0 {
+            // 3 ppu cycles per cpu cycle, so 256 ppu cycles / 3 (~85 cpu cycles) for the visible pixels
+            self.cpu.memory_interface.ppu.run(true);
         }
 
         (cycles, render)
