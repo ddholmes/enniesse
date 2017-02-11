@@ -1,11 +1,12 @@
 use minifb::{Key, WindowOptions, Window, Scale};
 
-use nes::*;
-use input::Button;
-use ppu;
-use rom::*;
+use nesrs::nes::Nes;
+use nesrs::input::Button;
+use nesrs::ppu;
+use nesrs::rom::Rom;
 use std::thread;
 use std::time;
+use std::path::Path;
 
 pub struct Emu {
     window: Window,
@@ -13,7 +14,9 @@ pub struct Emu {
 }
 
 impl Emu {
-    pub fn new(rom: Rom) -> Emu {
+    pub fn new<P: AsRef<Path>>(path: P) -> Emu {
+        let rom = Rom::from_file(path);
+
         Emu {
             window: Window::new("nesrs", ppu::SCREEN_WIDTH, ppu::SCREEN_HEIGHT,
                                 WindowOptions { 

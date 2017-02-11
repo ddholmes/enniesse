@@ -1,11 +1,8 @@
-extern crate minifb;
-
 pub mod cpu;
-mod apu;
-mod ppu;
+pub mod apu;
+pub mod ppu;
 pub mod nes;
 pub mod rom;
 pub mod memory;
-mod mapper;
-mod input;
-pub mod emu;
+pub mod mapper;
+pub mod input;
