@@ -22,7 +22,7 @@ impl Nes {
 
     pub fn step(&mut self) -> (usize, bool) {
         //self.cpu.trace_state();
-        self.cpu.run_instruction();
+        self.cpu.step();
         
         let cycles = self.cpu.cycle;
         let mut render = false;

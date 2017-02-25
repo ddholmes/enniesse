@@ -79,13 +79,9 @@ impl Cpu {
         self.reg_pc = self.load_word(BRK_VECTOR);
     }
     
-    pub fn run_instruction(&mut self) {
+    pub fn step(&mut self) {
         let opcode = self.load_byte_from_pc();
         
-        self.execute_instruction(opcode);
-    }
-    
-    pub fn execute_instruction(&mut self, opcode: u8) {        
         macro_rules! instruction {
             ($i:ident, $c:expr) => {{
                 self.$i();

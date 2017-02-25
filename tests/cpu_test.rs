@@ -26,7 +26,7 @@ fn test_cpu() {
     for line in reader.lines() {
         let expected_state = test.get_state_from_line(&line.unwrap());
         CpuTest::test_state(&cpu, &expected_state);
-        cpu.run_instruction();
+        cpu.step();
         CpuTest::test_rom_output(&mut cpu);
     }
 }
