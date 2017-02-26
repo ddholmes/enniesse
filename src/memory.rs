@@ -74,7 +74,7 @@ impl Memory for MemoryInterface {
             APU_REG_START ... APU_REG_END => self.apu.load_byte(addr),
             APU_STATUS_REG => self.apu.load_byte(addr),
             IO_REG => self.input.load_byte(addr),
-            APU_IO_SHARED_REG => self.apu.load_byte(addr) | self.input.load_byte(addr),
+            APU_IO_SHARED_REG => self.input.load_byte(addr), // $4017 on the APU is write only, so we only need to load from IO
             CART_MAPPER_START ... CART_MAPPER_END => self.mapper.borrow_mut().load_byte_prg(addr),
             _ => panic!("Read address out of range: {:X}", addr)
         }
