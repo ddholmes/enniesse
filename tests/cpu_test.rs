@@ -47,15 +47,15 @@ impl CpuTest {
     fn get_state_from_line(&self, line: &str) -> ExpectedState {
         let captures = self.line_regex.captures(line).unwrap();
         ExpectedState {
-            pc: u16::from_str_radix(captures.name("PC").unwrap(), 16).unwrap(),
-            opcode: u8::from_str_radix(captures.name("OP").unwrap(), 16).unwrap(),
-            a: u8::from_str_radix(captures.name("A").unwrap(), 16).unwrap(),
-            x: u8::from_str_radix(captures.name("X").unwrap(), 16).unwrap(),
-            y: u8::from_str_radix(captures.name("Y").unwrap(), 16).unwrap(),
-            p: u8::from_str_radix(captures.name("P").unwrap(), 16).unwrap(),
-            sp: u8::from_str_radix(captures.name("SP").unwrap(), 16).unwrap(),
-            cyc: u16::from_str_radix(captures.name("CYC").unwrap(), 10).unwrap(),
-            sl: i16::from_str_radix(captures.name("SL").unwrap(), 10).unwrap()
+            pc: u16::from_str_radix(captures.name("PC").unwrap().as_str(), 16).unwrap(),
+            opcode: u8::from_str_radix(captures.name("OP").unwrap().as_str(), 16).unwrap(),
+            a: u8::from_str_radix(captures.name("A").unwrap().as_str(), 16).unwrap(),
+            x: u8::from_str_radix(captures.name("X").unwrap().as_str(), 16).unwrap(),
+            y: u8::from_str_radix(captures.name("Y").unwrap().as_str(), 16).unwrap(),
+            p: u8::from_str_radix(captures.name("P").unwrap().as_str(), 16).unwrap(),
+            sp: u8::from_str_radix(captures.name("SP").unwrap().as_str(), 16).unwrap(),
+            cyc: u16::from_str_radix(captures.name("CYC").unwrap().as_str(), 10).unwrap(),
+            sl: i16::from_str_radix(captures.name("SL").unwrap().as_str(), 10).unwrap()
         }
     }
     
