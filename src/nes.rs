@@ -20,14 +20,15 @@ impl Nes {
         self.cpu.reset();
     }
 
-    pub fn step(&mut self) -> (usize, bool) {
+    pub fn step(&mut self) -> (u16, bool) {
         //self.cpu.trace_state();
+        let cycle_start = self.cpu.cycle;
         self.cpu.step();
-        
-        let cycles = self.cpu.cycle;
+        let cycle_end = self.cpu.cycle;
+
         let mut render = false;
 
-        if cycles >= ppu::CPU_CYCLES_PER_SCANLINE as usize {
+        if cycle_end >= ppu::CPU_CYCLES_PER_SCANLINE {
             let result = self.cpu.memory_interface.ppu.run(false);
             
             if result.vblank {
@@ -40,12 +41,20 @@ impl Nes {
 
             render = result.render_frame;
             
-            self.cpu.cycle = cycles % ppu::CPU_CYCLES_PER_SCANLINE as usize;
-        } else if cycles >= (ppu::SCREEN_WIDTH / 3) && self.cpu.memory_interface.ppu.cycle == 0 {
+            self.cpu.cycle = cycle_end % ppu::CPU_CYCLES_PER_SCANLINE;
+        } else if cycle_end >= (ppu::SCREEN_WIDTH as u16 / 3) && self.cpu.memory_interface.ppu.cycle == 0 {
             // 3 ppu cycles per cpu cycle, so 256 ppu cycles / 3 (~85 cpu cycles) for the visible pixels
             self.cpu.memory_interface.ppu.run(true);
         }
 
-        (cycles, render)
+        for _ in 0 .. cycle_end - cycle_start {
+            self.cpu.memory_interface.apu.step();
+
+            if self.cpu.memory_interface.apu.dmc_interrupt || self.cpu.memory_interface.apu.frame_interrupt {
+                self.cpu.irq();
+            }
+        }
+
+        (cycle_end, render)
     }
 }

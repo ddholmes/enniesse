@@ -27,7 +27,7 @@ pub struct Cpu {
     // status register
     pub reg_p: StatusRegister,
     
-    pub cycle: usize,
+    pub cycle: u16,
     
     pub memory_interface: MemoryInterface,
     

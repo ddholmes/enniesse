@@ -55,11 +55,12 @@ impl MemoryInterface {
         // Rc allows sharing the pointer, RefCell allows mutability
         let shared_mapper = Rc::new(RefCell::new(mapper));
         let ppu = Ppu::new(shared_mapper.clone());
+        let apu = Apu::new(shared_mapper.clone());
         
         MemoryInterface {
             ram: Ram::new(),
             mapper: shared_mapper,
-            apu: Apu::new(),
+            apu: apu,
             ppu: ppu,
             input: Input::new()
         }
