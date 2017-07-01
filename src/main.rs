@@ -1,7 +1,7 @@
 use std::env;
 
 extern crate minifb;
-extern crate nesrs;
+extern crate enniesse_core;
 
 mod emu;
 

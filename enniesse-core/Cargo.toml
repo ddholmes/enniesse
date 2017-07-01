@@ -1,0 +1,7 @@
+[package]
+name = "enniesse-core"
+version = "0.1.0"
+authors = ["Dustin Holmes <ddholmes@users.noreply.github.com>"]
+
+[dev-dependencies]
+regex = "0.2.1"

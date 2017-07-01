@@ -1,9 +1,9 @@
 use minifb::{Key, WindowOptions, Window, Scale};
 
-use nesrs::nes::Nes;
-use nesrs::input::Button;
-use nesrs::ppu;
-use nesrs::rom::Rom;
+use enniesse_core::nes::Nes;
+use enniesse_core::input::Button;
+use enniesse_core::ppu;
+use enniesse_core::rom::Rom;
 use std::thread;
 use std::time;
 use std::path::Path;

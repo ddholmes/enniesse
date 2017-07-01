@@ -1,13 +1,13 @@
 extern crate regex;
-extern crate nesrs;
+extern crate enniesse_core;
 
 use std::fs::File;
 use std::io::{BufReader, BufRead};
 use std::fmt;
 
-use nesrs::cpu::Cpu;
-use nesrs::memory::Memory;
-use nesrs::rom::Rom;
+use enniesse_core::cpu::Cpu;
+use enniesse_core::memory::Memory;
+use enniesse_core::rom::Rom;
 
 const LOG_FILE_PATH: &'static str = "tests/nestest.log";
 const TEST_ROM_PATH: &'static str = "tests/nestest.nes";
