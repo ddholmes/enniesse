@@ -1,5 +1,5 @@
 [root]
-name = "nesrs"
+name = "enniesse"
 version = "0.1.0"
 dependencies = [
  "enniesse-core 0.1.0",
