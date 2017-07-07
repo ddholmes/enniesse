@@ -1,6 +1,5 @@
 # Enniesse
 
-## Description
 Enniesse is a hobby project NES emulator written in Rust, made with the goal of learning Rust and about emulation in general.
 
 ## Status
