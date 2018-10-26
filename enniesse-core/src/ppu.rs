@@ -324,23 +324,26 @@ impl Ppu {
         let x = current_pixel % 8;
         let tile_select = (x + self.fine_x) / 8;
 
-        let tile = &self.tiles_to_render[tile_select as usize];
-        let offset = (x + self.fine_x) % 8;
-        
-        // bit0 of the color from the high byte, bit1 from the low
-        let bit0 = (tile.plane0 >> 7 - offset) & 1;
-        let bit1 = (tile.plane1 >> 7 - offset) & 1;
+        if let Some(tile) = &self.tiles_to_render.get(tile_select as usize) {
+            let offset = (x + self.fine_x) % 8;
+            
+            // bit0 of the color from the high byte, bit1 from the low
+            let bit0 = (tile.plane0 >> 7 - offset) & 1;
+            let bit1 = (tile.plane1 >> 7 - offset) & 1;
 
-        let pattern_color = ((bit1 << 1) | bit0) as u8;
+            let pattern_color = ((bit1 << 1) | bit0) as u8;
 
-        if pattern_color == 0 {
-            return None;
+            if pattern_color == 0 {
+                return None;
+            }
+            
+            let palette_index = (tile.attribute_color << 2) | pattern_color;
+            let color_index = self.vram.load_byte(PALETTE_START + palette_index as u16);
+            
+            return Some(self.color_from_palette(color_index as usize));
         }
-        
-        let palette_index = (tile.attribute_color << 2) | pattern_color;
-        let color_index = self.vram.load_byte(PALETTE_START + palette_index as u16);
-        
-        Some(self.color_from_palette(color_index as usize))
+
+        None
     }
 
     fn get_sprite_pixel(&mut self, x: u8) -> (Option<RgbColor>, bool, bool) {

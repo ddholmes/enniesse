@@ -44,7 +44,7 @@ impl Emu {
                                 (self.nes.cpu.memory_interface.ppu.display_buffer[i * 3 + 1] as u32) << 8 |
                                 self.nes.cpu.memory_interface.ppu.display_buffer[i * 3 + 2] as u32;
                 }
-                self.window.update_with_buffer(&buffer);
+                self.window.update_with_buffer(&buffer).expect("Window update failed");
                 thread::sleep(time::Duration::from_millis(16));
             }
 
