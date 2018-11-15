@@ -1,0 +1,8 @@
+[package]
+name = "enniesse"
+version = "0.1.0"
+authors = ["Dustin Holmes"]
+
+[dependencies]
+minifb = "0.11.0"
+enniesse-core = { path = "../enniesse-core" }
